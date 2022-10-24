@@ -1,0 +1,24 @@
+[Unit]
+Description=oracle_collector Agent
+Documentation=http://github.com/toni-moreno/oracle_collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/sysconfig/oracle_collector
+User=oracle_collector
+Group=oracle_collector
+Type=simple
+Restart=on-failure
+WorkingDirectory=/usr/share/oracle_collector
+ExecStart=/usr/sbin/oracle_collector                    \
+                            --pidfile=${PID_FILE}     \
+                            --config=${CONF_FILE}     \
+                            --logs=${LOG_DIR}         \
+                            --home=${HOME_DIR}        \
+                            --data=${DATA_DIR}
+LimitNOFILE=10000
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

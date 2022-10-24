@@ -1,0 +1,17 @@
+oracle_collector_USER=oracle_collector
+
+oracle_collector_GROUP=oracle_collector
+
+oracle_collector_HOME=/usr/share/oracle_collector
+
+LOG_DIR=/var/log/oracle_collector
+
+DATA_DIR=/var/lib/oracle_collector
+
+MAX_OPEN_FILES=10000
+
+CONF_DIR=/etc/oracle_collector
+
+CONF_FILE=/etc/oracle_collector/oracle_collector.toml
+
+RESTART_ON_UPGRADE=false

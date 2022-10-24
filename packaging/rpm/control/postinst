@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -e
+
+[ -f /etc/sysconfig/oracle_collector ] && . /etc/sysconfig/oracle_collector
+
+startoracle_collector() {
+  if [ -x /bin/systemctl ] ; then
+		/bin/systemctl start oracle_collector.service
+	elif [ -x /etc/init.d/oracle_collector ] ; then
+		/etc/init.d/oracle_collector start
+	elif [ -x /etc/rc.d/init.d/oracle_collector ] ; then
+		/etc/rc.d/init.d/oracle_collector start
+	fi
+}
+
+stoporacle_collector() {
+	if [ -x /bin/systemctl ] ; then
+		/bin/systemctl stop oracle_collector.service > /dev/null 2>&1 || :
+	elif [ -x /etc/init.d/oracle_collector ] ; then
+		/etc/init.d/oracle_collector stop
+	elif [ -x /etc/rc.d/init.d/oracle_collector ] ; then
+		/etc/rc.d/init.d/oracle_collector stop
+	fi
+}
+
+# Initial installation: $1 == 1
+# Upgrade: $1 == 2, and configured to restart on upgrade
+if [ $1 -eq 1 ] ; then
+	[ -z "$oracle_collector_USER" ] && oracle_collector_USER="oracle_collector"
+	[ -z "$oracle_collector_GROUP" ] && oracle_collector_GROUP="oracle_collector"
+	if ! getent group "$oracle_collector_GROUP" > /dev/null 2>&1 ; then
+    groupadd -r "$oracle_collector_GROUP"
+	fi
+	if ! getent passwd "$oracle_collector_USER" > /dev/null 2>&1 ; then
+    useradd -r -g oracle_collector -d /usr/share/oracle_collector -s /sbin/nologin \
+    -c "oracle_collector user" oracle_collector
+	fi
+
+ 	# Set user permissions on /var/log/oracle_collector, /var/lib/oracle_collector
+	mkdir -p /var/log/oracle_collector /var/lib/oracle_collector
+	chown -R $oracle_collector_USER:$oracle_collector_GROUP /var/log/oracle_collector /var/lib/oracle_collector
+	chmod 755 /var/log/oracle_collector /var/lib/oracle_collector
+
+	# configuration files should not be modifiable by oracle_collector user, as this can be a security issue
+	chown -Rh root:$oracle_collector_GROUP /etc/oracle_collector/*
+	chmod 755 /etc/oracle_collector
+	find /etc/oracle_collector -type f -exec chmod 640 {} ';'
+	find /etc/oracle_collector -type d -exec chmod 755 {} ';'
+
+  if [ -x /bin/systemctl ] ; then
+    echo "### NOT starting on installation, please execute the following statements to configure oracle_collector to start automatically using systemd"
+    echo " sudo /bin/systemctl daemon-reload"
+    echo " sudo /bin/systemctl enable oracle_collector.service"
+    echo "### You can start oracle_collector by executing"
+    echo " sudo /bin/systemctl start oracle_collector.service"
+  elif [ -x /sbin/chkconfig ] ; then
+    echo "### NOT starting oracle_collector by default on bootup, please execute"
+    echo " sudo /sbin/chkconfig --add oracle_collector"
+    echo "### In order to start oracle_collector, execute"
+    echo " sudo service oracle_collector start"
+  fi
+elif [ $1 -ge 2 ] ; then
+  if [ -x /opt/oracle_collector/ ]; then
+    echo "### Upgrading Notice ### "
+    echo "-- New oracle_collector install home is /usr/share/oracle_collector"
+    #echo "-- Please move sqlite3 database to /var/lib/oracle_collector/"
+    echo "-- Notice: service name && binary changed to oracle_collector"
+  fi
+
+  if [ "$RESTART_ON_UPGRADE" == "true" ]; then
+    stoporacle_collector
+    startoracle_collector
+  fi
+fi
