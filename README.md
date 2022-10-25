@@ -71,7 +71,7 @@ docker run  -p 4090:4090 -v /mylocal/conf:/opt/oracle_collector/conf -v /mylocal
 
 To rebuild on source change (requires that you executed godep restore)
 ```bash
-go get github.com/Unknwon/bra
+go install github.com/unknwon/bra@latest
 bra run  
 ```
 

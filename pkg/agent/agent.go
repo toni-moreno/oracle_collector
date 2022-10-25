@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -70,11 +71,17 @@ func End() (time.Duration, error) {
 }
 
 func Start() {
+	log.Info("Before Discovery")
+	done := make(chan bool)
 	// init discovery process
-
+	go discoveryProcess(&MainConfig.Discovery, done)
+	log.Info("After Discovery")
 	// init SystemMonitor Process
 
 	// init OracleMonitor Process
+
+	// init Output Sync process
+	output.Init(&MainConfig.Output)
 }
 
 // ReloadConf stops the polling, reloads all configuration and restart the polling.

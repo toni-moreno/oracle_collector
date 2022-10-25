@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/toni-moreno/oracle_collector/pkg/agent"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -23,7 +24,6 @@ var (
 	quit = make(chan struct{})
 	// startTime  = time.Now()
 	getversion bool
-	httpPort   = "0.0.0.0:4090"
 	appdir     = os.Getenv("PWD")
 	// homeDir    string
 	pidFile string
@@ -32,11 +32,6 @@ var (
 	confDir = filepath.Join(appdir, "conf")
 	// dataDir    = confDir
 	configFile = filepath.Join(confDir, "oracle_collector.toml")
-	//
-
-	loginfo  bool
-	logdebug bool
-	logtrace bool
 )
 
 func writePIDFile() {
@@ -60,10 +55,6 @@ func writePIDFile() {
 func flags() *flag.FlagSet {
 	var f flag.FlagSet
 	f.BoolVar(&getversion, "version", getversion, "display the version")
-	//--------------------------------------------------------------
-	f.BoolVar(&loginfo, "v", loginfo, "set log level to Info")
-	f.BoolVar(&logdebug, "vv", logdebug, "set log level to Debug")
-	f.BoolVar(&logtrace, "vvv", logtrace, "set log level to Trace")
 
 	//--------------------------------------------------------------
 	f.StringVar(&configFile, "config", configFile, "config file")
@@ -141,11 +132,9 @@ func init() {
 		log.Infof("Set log level to  %s from Config File", cfg.General.LogLevel)
 	}
 
-	// needed to create SQLDB when SQLite and debug log
 	config.SetLogger(log)
 	config.SetLogDir(logDir)
-	// config.SetDirs(dataDir, logDir, confDir)
-
+	output.SetLogger(log)
 	agent.SetLogger(log)
 
 	//

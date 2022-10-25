@@ -1,0 +1,15 @@
+[run]
+init_cmds = [
+  ["go", "build", "-race","-o", "./bin/oracle_collector", "./pkg/"],
+	["./bin/oracle_collector"]
+]
+watch_all = true
+watch_dirs = [
+	"$WORKDIR/pkg",
+]
+watch_exts = [".go", ".toml"]
+build_delay = 1500
+cmds = [
+  ["go", "build", "-race","-o", "./bin/oracle_collector", "./pkg/"],
+	["./bin/oracle_collector"]
+]
