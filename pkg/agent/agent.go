@@ -51,11 +51,10 @@ var (
 	reloadMutex   sync.Mutex
 	reloadProcess bool
 	// mutex guards the runtime devices map access
-	mutex sync.RWMutex
+	mutex    sync.RWMutex
+	gatherWg sync.WaitGroup
 
-	processWg sync.WaitGroup
-
-	MaxWorkers int
+	// processWg sync.WaitGroup
 )
 
 // SetLogger sets the current log output.
@@ -75,13 +74,21 @@ func Start() {
 	done := make(chan bool)
 	// init discovery process
 	go discoveryProcess(&MainConfig.Discovery, done)
-	log.Info("After Discovery")
-	// init SystemMonitor Process
-
-	// init OracleMonitor Process
 
 	// init Output Sync process
 	output.Init(&MainConfig.Output)
+	log.Info("After Discovery")
+	// init SystemMonitor Process
+
+	cfg := MainConfig.OraMon
+
+	for i, group := range cfg.MetricGroup {
+		log.Infof("Begin [%d] Collecting data from Group %s", i, group.Name)
+		processor := InitGroupProcessor(group, OraInstances)
+		processor.StartCollection(done, &gatherWg)
+	}
+	// init OracleMonitor Process
+	gatherWg.Wait()
 }
 
 // ReloadConf stops the polling, reloads all configuration and restart the polling.

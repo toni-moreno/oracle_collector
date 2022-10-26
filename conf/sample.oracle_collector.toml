@@ -1,26 +1,52 @@
 # -*- toml -*-
 
 
-[General]
+[general]
 
 logdir = "./log"
 loglevel = "debug"
-log_mode = "file"
+log_mode = "console"
 
-oracle-discovery-interval = "60m"
-oracle-discovery-sid-regex = "^.*$"
+
+[output]
+
+buffer_size = 10000
+flush_period = "10s"
+
+[oracle-discovery]
+
+oracle_discovery_interval = "5m"
+oracle_discovery_sid_regex = "^[oraxe].*_pmon_(?P<SID>[\\w]+)$"
 
 oracle_connect_user= "system"
-oracle_connect_pass= "password"
-oracle_connect_dsn="dbsnmp/password@//host:1521/service?transport_connect_timeout=5&retry_count=3"
+oracle_connect_pass= "toni1234"
+oracle_connect_dsn="192.168.1.84:1521/SID?transport_connect_timeout=5&retry_count=3"
 
+extra_labels = ["environtment=PRO","group=Exadata","release=Legacy"]
 
-extra-labels = ["environtment=PRO","group=Exadata","release=Legacy"]
+[[oracle-discovery.dinamic-labels]]
 
+sid_regex=".*P[0-9]$"
+extra_labels=["environment=PRO"]
+
+[[oracle-discovery.dinamic-labels]]
+
+sid_regex=".*R[0-9]$"
+extra_labels=["environment=PRE"]
+
+[[oracle-discovery.dinamic-labels]]
+
+sid_regex=".*D[0-9]$"
+extra_labels=["environment=DES"]
+
+[[oracle-discovery.dinamic-labels]]
+
+sid_regex=".*I[0-9]$"
+extra_labels=["environment=INT"]
 
 [SystemMonitor]
 
-frequency = "60s"
+query_period = "60s"
 
 [[process_groups]]
 process_pattern = "DBWn"
@@ -59,48 +85,56 @@ process_pattern = "QMN[0-9]{1}"
 process_label = "Queue Monitor Processes (QMNn)"
 
 
-[OracleMonitor]
+[oracle-monitor]
 
+default_query_period = "60s"
+default_query_timeout = "10s"
 
-[[MetricGroup]]
+[[oracle-monitor.mgroup]]
 
 name ="BaseMetrics"
+query_period = "60s"
+query_timeout = "5s"
 
-frequency = "60s"
-
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "sessions"
 labels = [ "status", "type" ]
-metricsdesc = { value= "Gauge metric with count of sessions by status and type." }
+metrics_desc = { value= "Gauge metric with count of sessions by status and type." }
+metric_type = { value='integer'}
 request = "SELECT status, type, COUNT(*) as value FROM v$session GROUP BY status, type"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "resource"
 labels = [ "resource_name" ]
-metricsdesc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
+metrics_desc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
+metric_type = { value='integer'}
 request="SELECT resource_name,current_utilization,CASE WHEN TRIM(limit_value) LIKE 'UNLIMITED' THEN '-1' ELSE TRIM(limit_value) END as limit_value FROM v$resource_limit"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "asm_diskgroup"
 labels = [ "name" ]
-metricsdesc = { total = "Total size of ASM disk group.", free = "Free space available on ASM disk group." }
+metrics_desc = { total = "Total size of ASM disk group.", free = "Free space available on ASM disk group." }
+metrics_type = { total = 'integer', free = 'integer'}
 request = "SELECT name,total_mb*1024*1024 as total,free_mb*1024*1024 as free FROM v$asm_diskgroup_stat where exists (select 1 from v$datafile where name like '+%')"
 ignorezeroresult = true
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "activity"
-metricsdesc = { value="Generic counter metric from v$sysstat view in Oracle." }
+metrics_desc = { value="Generic counter metric from v$sysstat view in Oracle." }
+metrics_type = { value='integer'}
 fieldtoappend = "name"
 request = "SELECT name, value FROM v$sysstat WHERE name IN ('parse count (total)', 'execute count', 'user commits', 'user rollbacks')"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "process"
-metricsdesc = { count="Gauge metric with count of processes." }
+metrics_desc = { count="Gauge metric with count of processes." }
+metrics_type = { count='integer'}
 request = "SELECT COUNT(*) as count FROM v$process"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "wait_time"
-metricsdesc = { value="Generic counter metric from v$waitclassmetric view in Oracle." }
+metrics_desc = { value="Generic counter metric from v$waitclassmetric view in Oracle." }
+metrics_type = { value='integer'}
 fieldtoappend= "wait_class"
 request = '''
 SELECT
@@ -112,10 +146,11 @@ WHERE
   m.wait_class_id=n.wait_class_id AND n.wait_class != 'Idle'
 '''
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "tablespace"
 labels = [ "tablespace", "type" ]
-metricsdesc = { bytes = "Generic counter metric of tablespaces bytes in Oracle.", max_bytes = "Generic counter metric of tablespaces max bytes in Oracle.", free = "Generic counter metric of tablespaces free bytes in Oracle.", used_percent = "Gauge metric showing as a percentage of how much of the tablespace has been used." }
+metrics_desc = { bytes = "Generic counter metric of tablespaces bytes in Oracle.", max_bytes = "Generic counter metric of tablespaces max bytes in Oracle.", free = "Generic counter metric of tablespaces free bytes in Oracle.", used_percent = "Gauge metric showing as a percentage of how much of the tablespace has been used." }
+metrics_type = { bytes = 'integer', max_bytes = 'integer', free='integer',used_percent='float'}
 request = '''
 SELECT
     dt.tablespace_name as tablespace,
@@ -129,19 +164,19 @@ WHERE dtum.tablespace_name = dt.tablespace_name
 ORDER by tablespace
 '''
 
-[[MetricGroup]]
+[[oracle-monitor.mgroup]]
 
 name ="AsmMetrics"
-
 instance_filter = "ASM"
+query_period = "60s"
+query_timeout = "10s"
 
-frequency = "60s"
 
-
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "diskgroup_size"
 labels = [ "inst_id", "node_name" , "instance_name", "diskgroup_name" ]
-metricsdesc = { total = "Total size of ASM disk group in MB.", free = "Free space available on ASM disk group in MB." }
+metrics_desc = { total = "Total size of ASM disk group in MB.", free = "Free space available on ASM disk group in MB." }
+metrics_type = { total = 'integer', free='integer'}
 request = '''
 SELECT instance_number            AS inst_id,
        host_name                  AS node_name,
@@ -153,10 +188,11 @@ SELECT instance_number            AS inst_id,
 '''
 ignorezeroresult = true
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "asmuptime"
 labels = [ "inst_id", "node_name", "instance_name"]
-metricsdesc = { uptime = "ASM uptime" }
+metrics_desc = { uptime = "ASM uptime" }
+netrics_type = { uptime = 'integer'}
 request = '''
 SELECT instance_number                      AS inst_id,
        host_name                            AS node_name,
@@ -165,11 +201,11 @@ SELECT instance_number                      AS inst_id,
   FROM v$instance
 '''
 
-#[[MetricGroup.metric]]
+#[[oracle-monitor.mgroup.metric]]
 #context = "asm_dg_stat"
 #labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name" ]
-#metricsdesc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
-#metricstype = { reads = "counter", writes = "counter", bytes_read = "counter", bytes_written = "counter", iops = "counter" }
+#metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
+#metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", bytes_written = "counter", iops = "counter" }
 #request = '''
 #  SELECT i.instance_number              AS inst_id,
 #         i.host_name                    AS node_name,
@@ -188,11 +224,11 @@ SELECT instance_number                      AS inst_id,
 #         g.name
 #'''
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "asm_disk_stat"
 labels = [ "inst_id", "node_name", "instance_name", "diskgroup_name", "disk_number", "failgroup", "path" ]
-metricsdesc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", read_time = "Total I/O time (in hundreths of a second) for read requests for the disk", write_time = "Total I/O time (in hundreths of a second) for write requests for the disk", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
-metricstype = { reads = "counter", writes = "counter", bytes_read = "counter", read_time = "counter", write_time = "counter", bytes_written = "counter", iops = "counter" }
+metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", read_time = "Total I/O time (in hundreths of a second) for read requests for the disk", write_time = "Total I/O time (in hundreths of a second) for write requests for the disk", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
+metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", read_time = "counter", write_time = "counter", bytes_written = "counter", iops = "counter" }
 request = '''
   SELECT i.instance_number                         AS inst_id,
          i.host_name                               AS node_name,
@@ -212,10 +248,11 @@ request = '''
    WHERE ds.mount_status = 'CACHED' AND ds.group_number = g.group_number
 '''
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "asm_space_consumers"
 labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name", "sid", "file_type" ]
-metricsdesc = { size_mb = "Total space usage by db by file_type" , files = "Number of files by db by type" }
+metrics_desc = { size_mb = "Total space usage by db by file_type" , files = "Number of files by db by type" }
+metrics_type = { size_mb = 'integer', files ='integer'}
 request = '''
   SELECT i.instance_number                     AS inst_id,
          i.host_name                           AS node_name,
@@ -278,61 +315,61 @@ GROUP BY i.instance_number,
          file_type
 '''
 
-[[MetricGroup]]
+[[oracle-monitor.mgroup]]
 
 name ="CustomMetrics"
+query_period = "5m"
 
-frequency = "60s"
-
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "slow_queries"
-metricsdesc = { p95_time_usecs= "Gauge metric with percentile 95 of elapsed time.", p99_time_usecs= "Gauge metric with percentile 99 of elapsed time." }
+metrics_desc = { p95_time_usecs= "Gauge metric with percentile 95 of elapsed time.", p99_time_usecs= "Gauge metric with percentile 99 of elapsed time." }
+metrics_type = { p95_time_usecs='float', p99_time_usecs='float'}
 request = "select  percentile_disc(0.95)  within group (order by elapsed_time) as p95_time_usecs, percentile_disc(0.99)  within group (order by elapsed_time) as p99_time_usecs from v$sql where last_active_time >= sysdate - 5/(24*60)"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "big_queries"
-metricsdesc = { p95_rows= "Gauge metric with percentile 95 of returned rows.", p99_rows= "Gauge metric with percentile 99 of returned rows." }
+metrics_desc = { p95_rows= "Gauge metric with percentile 95 of returned rows.", p99_rows= "Gauge metric with percentile 99 of returned rows." }
+metrics_type = { p95_rows= 'integer', p99_rows='integer'}
 request = "select  percentile_disc(0.95)  within group (order by rownum) as p95_rows, percentile_disc(0.99)  within group (order by rownum) as p99_rows from v$sql where last_active_time >= sysdate - 5/(24*60)"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_user_segments_top100"
-metricsdesc = {table_bytes="Gauge metric with the size of the tables in user segments."}
+metrics_desc = {table_bytes="Gauge metric with the size of the tables in user segments."}
+metrics_type = {table_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_bytes from user_segments where segment_type='TABLE' group by segment_name) order by table_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_user_segments_top100"
-metricsdesc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
+metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
+metrics_type = {table_partition_bytes="integer"}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_partition_bytes from user_segments where segment_type='TABLE PARTITION' group by segment_name) order by table_partition_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_user_segments_top100"
-metricsdesc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
+metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
+metrics_type = {cluster_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as cluster_bytes from user_segments where segment_type='CLUSTER' group by segment_name) order by cluster_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metricsdesc = {table_bytes="Gauge metric with the size of the tables in user segments."}
+metrics_desc = {table_bytes="Gauge metric with the size of the tables in user segments."}
+metrics_type = {table_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_bytes from dba_segments where segment_type='TABLE' group by segment_name) order by table_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metricsdesc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
+metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
+metrics_type = {table_partition_bytes='integer' }
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_partition_bytes from dba_segments where segment_type='TABLE PARTITION' group by segment_name) order by table_partition_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
-[[MetricGroup.metric]]
+[[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metricsdesc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
+metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
+metrics_type = {cluster_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as cluster_bytes from dba_segments where segment_type='CLUSTER' group by segment_name) order by cluster_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[http]
- name = "example-http-influxdb"
- bind-addr = "127.0.0.1:4090"
- admin-user = "admin"
- admin-passwd = "admin"
- cookie-id = "mysupercokie"

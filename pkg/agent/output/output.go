@@ -29,7 +29,7 @@ func Init(cfg *config.OutputConfig) {
 	flushPeriod = cfg.FlushPeriod
 	MetricBufChan = make(chan *telegraf.Metric, bufferSize)
 	chExit = make(chan bool)
-	startOutputSender()
+	go startOutputSender()
 }
 
 // End release DB connection

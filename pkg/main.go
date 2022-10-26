@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 
 	"github.com/toni-moreno/oracle_collector/pkg/agent"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
@@ -92,31 +91,45 @@ func init() {
 		fmt.Printf("oracle_collector v%s (git: %s ) built at [%s]\n", agent.Version, agent.Commit, time.Unix(t, 0).Format("2006-01-02 15:04:05"))
 		os.Exit(0)
 	}
-
+	var cfg *config.Config
 	// now load up config settings
 	if _, err := os.Stat(configFile); err == nil {
-		viper.SetConfigFile(configFile)
+		cfg, err = config.LoadConfigFile(configFile)
+		if err != nil {
+			log.Errorf("Fatal error config file: %s \n", err)
+			os.Exit(1)
+		}
+		agent.MainConfig = *cfg
+		log.Infof("CFG :%+v", cfg)
+		// viper.SetConfigFile(configFile)
 		confDir = filepath.Dir(configFile)
 	} else {
-		viper.SetConfigName("oracle_collector")
-		viper.AddConfigPath("/etc/oracle_collector/")
-		viper.AddConfigPath("/opt/oracle_collector/conf/")
-		viper.AddConfigPath("./conf/")
-		viper.AddConfigPath(".")
-	}
-	err := viper.ReadInConfig()
-	if err != nil {
 		log.Errorf("Fatal error config file: %s \n", err)
 		os.Exit(1)
 	}
-	err = viper.Unmarshal(&agent.MainConfig)
-	if err != nil {
-		log.Errorf("Fatal error config file: %s \n", err)
-		os.Exit(1)
-	}
-	cfg := &agent.MainConfig
 
-	log.Infof("CFG :%+v", cfg)
+	// } else {
+	// 	viper.SetConfigName("oracle_collector")
+	// 	viper.AddConfigPath("/etc/oracle_collector/")
+	// 	viper.AddConfigPath("/opt/oracle_collector/conf/")
+	// 	viper.AddConfigPath("./conf/")
+	// 	viper.AddConfigPath(".")
+	// }
+	// err := viper.ReadInConfig()
+	// if err != nil {
+	// 	log.Errorf("Fatal error config file: %s \n", err)
+	// 	os.Exit(1)
+	// }
+	// err = viper.Unmarshal(&agent.MainConfig, func(config *mapstructure.DecoderConfig) {
+	// 	config.TagName = "toml"
+	// 	// do anything your like
+	// })
+	// if err != nil {
+	// 	log.Errorf("Fatal error config file: %s \n", err)
+	// 	os.Exit(1)
+	// }
+
+	// cfg := &agent.MainConfig
 
 	if len(logDir) == 0 {
 		logDir = cfg.General.LogDir

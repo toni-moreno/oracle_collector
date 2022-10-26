@@ -6,62 +6,73 @@ import (
 
 // GeneralConfig has miscellaneous configuration options
 type GeneralConfig struct {
-	InstanceID string `mapstructure:"instanceID"`
-	LogDir     string `mapstructure:"logdir"`
-	HomeDir    string `mapstructure:"homedir"`
-	DataDir    string `mapstructure:"datadir"`
-	LogLevel   string `mapstructure:"loglevel"`
+	InstanceID string `toml:"instanceID"`
+	LogDir     string `toml:"logdir"`
+	HomeDir    string `toml:"homedir"`
+	DataDir    string `toml:"datadir"`
+	LogLevel   string `toml:"loglevel"`
+}
+
+type DinamicLabels struct {
+	SidRegex    string            `toml:"sid_regex"`
+	ExtraLabels map[string]string `toml:"extra_labels"`
 }
 
 type DiscoveryConfig struct {
-	OracleDiscoveryInterval time.Duration `mapstructure:"oracle_discovery_interval"`
-	OracleDiscoverySidRegex string        `mapstructure:"oracle_discovery_sid_regex"`
-	OracleConnectUser       string        `mapstructure:"oracle_connect_user"`
-	OracleConnectPass       string        `mapstructure:"oracle_connect_pass"`
-	OracleConnectDSN        string        `mapstructure:"oracle_connect_dsn"`
+	OracleDiscoveryInterval time.Duration     `toml:"oracle_discovery_interval"`
+	OracleDiscoverySidRegex string            `toml:"oracle_discovery_sid_regex"`
+	OracleConnectUser       string            `toml:"oracle_connect_user"`
+	OracleConnectPass       string            `toml:"oracle_connect_pass"`
+	OracleConnectDSN        string            `toml:"oracle_connect_dsn"`
+	ExtraLabels             map[string]string `toml:"extra-labels"`
+	DinamicLabelsBySID      []*DinamicLabels  `toml:"dinamic-labels"`
 }
 
 type OutputConfig struct {
-	FlushPeriod time.Duration `mapstructure:"flush-period"`
-	BufferSize  int           `mapstructure:"buffer-size"`
+	FlushPeriod time.Duration `toml:"flush_period"`
+	BufferSize  int           `toml:"buffer_size"`
 }
 
 //SelfMonConfig configuration for self monitoring
 /*type SelfMonConfig struct {
-	Enabled           bool     `mapstructure:"enabled"`
-	Freq              int      `mapstructure:"freq"`
-	Prefix            string   `mapstructure:"prefix"`
-	InheritDeviceTags bool     `mapstructure:"inheritdevicetags"`
-	ExtraTags         []string `mapstructure:"extra-tags"`
+	Enabled           bool     `toml:"enabled"`
+	Freq              int      `toml:"freq"`
+	Prefix            string   `toml:"prefix"`
+	InheritDeviceTags bool     `toml:"inheritdevicetags"`
+	ExtraTags         []string `toml:"extra-tags"`
 }*/
 
 type OracleMetricConfig struct {
-	Context          string            `mapstructure:"context"`
-	Labels           []string          `mapstructure:"labels"`
-	MetricsDesc      map[string]string `mapstructure:"metricsdesc"`
-	MetricsType      map[string]string `mapstructure:"metricstype"`
-	FieldToAppend    string            `mapstructure:"fieldtoppend"`
-	Request          string            `mapstructure:"request"`
-	IgnoreZeroResult bool              `mapstructure:"ignorezeroresult"`
+	Context          string            `toml:"context"`
+	Labels           []string          `toml:"labels"`
+	MetricsDesc      map[string]string `toml:"metrics_desc"`
+	MetricsType      map[string]string `toml:"metrics_type"`
+	FieldToAppend    string            `toml:"fieldtoppend"`
+	Request          string            `toml:"request"`
+	IgnoreZeroResult bool              `toml:"ignorezeroresult"`
 	// MetricsBuckets   map[string]map[string]string
 }
 
 type OracleMetricGroupConfig struct {
-	QueryPeriod   time.Duration        `mapstructure:"query-period"`
-	Name          string               `mapstructure:"name"`
-	OracleMetrics []OracleMetricConfig `mapstructure:"MetricGroup.metric"`
+	QueryPeriod    time.Duration        `toml:"query_period"`
+	QueryTimeout   time.Duration        `toml:"query_timeout"`
+	Name           string               `toml:"name"`
+	InstanceFilter string               `toml:"instance_filter"`
+	OracleMetrics  []OracleMetricConfig `toml:"metric"`
 }
 
 type OracleMonitorConfig struct {
-	MetricGroups []OracleMetricGroupConfig `mapstructure:"MetricGroup"`
+	DefaultQueryTimeout time.Duration              `toml:"default_query_timeout"`
+	DefaultQueryPeriod  time.Duration              `toml:"default_query_period"`
+	MetricGroup         []*OracleMetricGroupConfig `toml:"mgroup"`
 }
 
 // Config Main Configuration struct
 type Config struct {
-	General   GeneralConfig       `mapstructure:"general"`
-	Output    OutputConfig        `mapstructure:"output"`
-	Discovery DiscoveryConfig     `mapstructure:"oracle-discovery"`
-	OraMon    OracleMonitorConfig `mapstructure:"oracle-monitor"`
+	General   GeneralConfig       `toml:"general"`
+	Output    OutputConfig        `toml:"output"`
+	Discovery DiscoveryConfig     `toml:"oracle-discovery"`
+	OraMon    OracleMonitorConfig `toml:"oracle-monitor"`
 	// Database DatabaseCfg
 	// Selfmon  SelfMonConfig
 }
