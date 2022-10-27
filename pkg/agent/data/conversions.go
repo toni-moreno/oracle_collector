@@ -1,6 +1,9 @@
 package data
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 func convert2Int64(value interface{}) int64 {
 	var val int64
@@ -112,7 +115,7 @@ func convert2String(value interface{}) string {
 	case uint64:
 		val = strconv.FormatUint(uint64(value), 10)
 	case string:
-		val = value
+		val = strings.TrimSpace(value)
 	default:
 		return ""
 	}

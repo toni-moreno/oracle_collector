@@ -46,19 +46,20 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 	n := mgp.UpdateInstances()
 	log.Infof("Number of instances found %d", n)
 	for _, i := range mgp.OracleInstances {
+		extraLabels := i.GetExtraLabels()
 		for _, q := range mgp.cfg.OracleMetrics {
-			mgp.Infof(i, "Query: %s in instance %s", q.Context, i.InstInfo.InstName)
+			mgp.Debugf(i, "Begin Metric Query: [%s]", q.Context)
 			table := data.NewDatatableWithConfig(&q)
-			n, err := i.Query(mgp.cfg.QueryTimeout, q.Request, table)
+			n, d, err := i.Query(mgp.cfg.QueryTimeout, q.Request, table)
 			if err != nil {
-				i.Warnf("Error on query: %s", err)
+				i.Warnf("Error on query: %s (Duration: %s)", err, d)
 				continue
 			}
-			mgp.Infof(i, "Oracle Metric Query: [%s] returned [%d] rows", q.Context, n)
+			mgp.Infof(i, "Oracle Metric Query: [%s] returned [%d] rows (Transposed by: %s)(Duration: %s)", q.Context, n, q.FieldToAppend, d)
 			// Data transformation.
-			metrics, err := table.GetMetrics()
+			metrics, err := table.GetMetrics(extraLabels)
 			if err != nil {
-				mgp.Warnf(i, "Error on  metric transformation: %s", err)
+				mgp.Warnf(i, "Oracle Metric Query: [%s] Error on  metric transformation: %s", q.Context, err)
 				continue
 			}
 			output.SendMetrics(metrics)

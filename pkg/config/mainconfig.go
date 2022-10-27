@@ -24,9 +24,9 @@ type DiscoveryConfig struct {
 	OracleConnectUser       string            `toml:"oracle_connect_user"`
 	OracleConnectPass       string            `toml:"oracle_connect_pass"`
 	OracleConnectDSN        string            `toml:"oracle_connect_dsn"`
-	ExtraLabels             map[string]string `toml:"extra-labels"`
+	ExtraLabels             map[string]string `toml:"extra_labels"`
 	OracleLogLevel          string            `toml:"oracle_log_level"`
-	DinamicLabelsBySID      []*DinamicLabels  `toml:"dinamic-labels"`
+	DynamicLabelsBySID      []*DinamicLabels  `toml:"dynamic-labels"`
 }
 
 type OutputConfig struct {
@@ -49,7 +49,7 @@ type OracleMetricConfig struct {
 	Labels           []string          `toml:"labels"`
 	MetricsDesc      map[string]string `toml:"metrics_desc"`
 	MetricsType      map[string]string `toml:"metrics_type"`
-	FieldToAppend    string            `toml:"fieldtoppend"`
+	FieldToAppend    string            `toml:"fieldtoappend"`
 	Request          string            `toml:"request"`
 	IgnoreZeroResult bool              `toml:"ignorezeroresult"`
 	// MetricsBuckets   map[string]map[string]string

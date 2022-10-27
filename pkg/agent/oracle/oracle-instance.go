@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,21 +54,57 @@ type OracleInstance struct {
 	log          *logrus.Logger
 }
 
-func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.DataTable) (int, error) {
+func (oi *OracleInstance) GetExtraLabels() map[string]string {
+	labels := make(map[string]string)
+	// First fixed labels
+	for k, v := range oi.cfg.ExtraLabels {
+		labels[k] = v
+	}
+	// Dinamic labels.
+	SID := oi.InstInfo.InstName // oi.Discovered SID
+
+	for n, rule := range oi.cfg.DynamicLabelsBySID {
+		oi.log.Debugf("Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
+		match, err := regexp.MatchString(rule.SidRegex, SID)
+		if err != nil {
+			oi.log.Warnf("Error on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
+			return labels
+		}
+		if match {
+			for k, v := range rule.ExtraLabels {
+				labels[k] = v
+			}
+		}
+	}
+	// Oracle Mandatory Labels.
+
+	labels["instance"] = oi.InstInfo.InstName
+	labels["instance_num"] = strconv.Itoa(oi.InstInfo.InstNumber)
+	labels["instance_role"] = oi.InstInfo.InstanceRole
+	labels["db"] = oi.DBInfo.DbName
+	labels["db_unique_name"] = oi.DBInfo.DBUniqName
+
+	return labels
+}
+
+func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.DataTable) (int, time.Duration, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	start := time.Now()
 	rows, err := oi.conn.QueryContext(ctx, query)
 	if ctx.Err() == context.DeadlineExceeded {
-		return 0, errors.New("Oracle query timed out")
+		return 0, 0, errors.New("Oracle query timed out")
 	}
 	if err != nil {
+		elapsed := time.Since(start)
 		oi.Warnf("Error in instance Query:%s", err)
-		return 0, err
+		return 0, elapsed, err
 	}
 	c, err := rows.Columns()
 	if err != nil {
+		elapsed := time.Since(start)
 		oi.Warnf("Error Query Columns:%s", err)
-		return 0, err
+		return 0, elapsed, err
 	}
 	t.SetHeader(c)
 	defer rows.Close()
@@ -74,10 +112,12 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	for rows.Next() {
 		rowpointers := t.AppendEmptyRow()
 		if err := rows.Scan(rowpointers...); err != nil {
-			return 0, err
+			elapsed := time.Since(start)
+			return 0, elapsed, err
 		}
 	}
-	return t.Length(), nil
+	elapsed := time.Since(start)
+	return t.Length(), elapsed, nil
 }
 
 func (oi *OracleInstance) InitDBData() error {
