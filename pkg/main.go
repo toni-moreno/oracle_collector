@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/toni-moreno/oracle_collector/pkg/agent"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/oracle"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
@@ -100,7 +101,7 @@ func init() {
 			os.Exit(1)
 		}
 		agent.MainConfig = *cfg
-		log.Infof("CFG :%+v", cfg)
+
 		// viper.SetConfigFile(configFile)
 		confDir = filepath.Dir(configFile)
 	} else {
@@ -108,36 +109,16 @@ func init() {
 		os.Exit(1)
 	}
 
-	// } else {
-	// 	viper.SetConfigName("oracle_collector")
-	// 	viper.AddConfigPath("/etc/oracle_collector/")
-	// 	viper.AddConfigPath("/opt/oracle_collector/conf/")
-	// 	viper.AddConfigPath("./conf/")
-	// 	viper.AddConfigPath(".")
-	// }
-	// err := viper.ReadInConfig()
-	// if err != nil {
-	// 	log.Errorf("Fatal error config file: %s \n", err)
-	// 	os.Exit(1)
-	// }
-	// err = viper.Unmarshal(&agent.MainConfig, func(config *mapstructure.DecoderConfig) {
-	// 	config.TagName = "toml"
-	// 	// do anything your like
-	// })
-	// if err != nil {
-	// 	log.Errorf("Fatal error config file: %s \n", err)
-	// 	os.Exit(1)
-	// }
-
-	// cfg := &agent.MainConfig
-
 	if len(logDir) == 0 {
 		logDir = cfg.General.LogDir
-		log.Infof("Set logdir %s from Command Line parameter", logDir)
+		// log.Infof("Set logdir %s from Command Line parameter", logDir)
 	}
 
+	// Log to file
+	logfilename := logDir + "/oracle_collector.log"
+	file, _ := os.OpenFile(logfilename, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	// default output to console
-	log.Out = os.Stdout
+	log.Out = file
 
 	if len(cfg.General.LogLevel) > 0 {
 		l, _ := logrus.ParseLevel(cfg.General.LogLevel)
@@ -149,8 +130,10 @@ func init() {
 	config.SetLogDir(logDir)
 	output.SetLogger(log)
 	agent.SetLogger(log)
+	oracle.SetLogDir(logDir)
+	oracle.SetLogger(log)
 
-	//
+	log.Debugf("Loaded Config  :%+v", cfg)
 	log.Infof("Set Default directories : \n   - Exec: %s\n   - Config: %s\n   -Logs: %s\n", appdir, confDir, logDir)
 }
 

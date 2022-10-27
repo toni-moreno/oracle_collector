@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/oracle"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
@@ -73,18 +74,17 @@ func Start() {
 	log.Info("Before Discovery")
 	done := make(chan bool)
 	// init discovery process
-	go discoveryProcess(&MainConfig.Discovery, done)
+	oracle.InitDiscovery(&MainConfig.Discovery, done)
 
 	// init Output Sync process
 	output.Init(&MainConfig.Output)
-	log.Info("After Discovery")
 	// init SystemMonitor Process
 
 	cfg := MainConfig.OraMon
 
 	for i, group := range cfg.MetricGroup {
 		log.Infof("Begin [%d] Collecting data from Group %s", i, group.Name)
-		processor := InitGroupProcessor(group, OraInstances)
+		processor := InitGroupProcessor(group, oracle.OraList)
 		processor.StartCollection(done, &gatherWg)
 	}
 	// init OracleMonitor Process

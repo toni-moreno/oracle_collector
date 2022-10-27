@@ -1,8 +1,7 @@
-package agent
+package data
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -65,8 +64,8 @@ func (dt *DataTable) Length() int {
 	return len(dt.Row)
 }
 
-func (dt *DataTable) GetMetrics() ([]*telegraf.Metric, error) {
-	result := []*telegraf.Metric{}
+func (dt *DataTable) GetMetrics() ([]telegraf.Metric, error) {
+	result := []telegraf.Metric{}
 
 	// Get Colunms index for tags
 	tagIndexes := make(map[string]int)
@@ -111,11 +110,13 @@ func (dt *DataTable) GetMetrics() ([]*telegraf.Metric, error) {
 			case "INTEGER", "COUNTER":
 				fallthrough
 			case "integer", "counter":
-				value, cerr = strconv.ParseInt(strings.TrimSpace(raw_value.(string)), 10, 64)
+				value = convert2Int64(raw_value)
 			case "float", "FLOAT":
-				value, cerr = strconv.ParseFloat(strings.TrimSpace(raw_value.(string)), 64)
+				value = convert2Float(raw_value)
 			case "bool", "BOOL", "BOOLEAN":
-				value, cerr = strconv.ParseBool(strings.TrimSpace(raw_value.(string)))
+				value = convert2Bool(raw_value)
+			case "string", "STRING":
+				value = convert2String(raw_value)
 			}
 			if cerr != nil {
 				return result, cerr
@@ -125,7 +126,7 @@ func (dt *DataTable) GetMetrics() ([]*telegraf.Metric, error) {
 		}
 
 		m := metric.New(dt.mcfg.Context, tags, fields, now)
-		result = append(result, &m)
+		result = append(result, m)
 	}
 	return result, nil
 }

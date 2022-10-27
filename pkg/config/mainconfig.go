@@ -7,10 +7,10 @@ import (
 // GeneralConfig has miscellaneous configuration options
 type GeneralConfig struct {
 	InstanceID string `toml:"instanceID"`
-	LogDir     string `toml:"logdir"`
-	HomeDir    string `toml:"homedir"`
-	DataDir    string `toml:"datadir"`
-	LogLevel   string `toml:"loglevel"`
+	LogDir     string `toml:"log_dir"`
+	HomeDir    string `toml:"home_dir"`
+	DataDir    string `toml:"data_dir"`
+	LogLevel   string `toml:"log_level"`
 }
 
 type DinamicLabels struct {
@@ -25,12 +25,14 @@ type DiscoveryConfig struct {
 	OracleConnectPass       string            `toml:"oracle_connect_pass"`
 	OracleConnectDSN        string            `toml:"oracle_connect_dsn"`
 	ExtraLabels             map[string]string `toml:"extra-labels"`
+	OracleLogLevel          string            `toml:"oracle_log_level"`
 	DinamicLabelsBySID      []*DinamicLabels  `toml:"dinamic-labels"`
 }
 
 type OutputConfig struct {
 	FlushPeriod time.Duration `toml:"flush_period"`
 	BufferSize  int           `toml:"buffer_size"`
+	BatchSize   int           `toml:"batch_size"`
 }
 
 //SelfMonConfig configuration for self monitoring

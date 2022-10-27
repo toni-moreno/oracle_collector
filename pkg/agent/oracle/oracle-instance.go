@@ -1,15 +1,16 @@
-package agent
+package oracle
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"strings"
-	"sync"
 	"time"
 
 	_ "github.com/sijms/go-ora/v2"
+	"github.com/sirupsen/logrus"
 
+	"github.com/toni-moreno/oracle_collector/pkg/agent/data"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -48,29 +49,23 @@ type OracleInstance struct {
 	PMONpid      int32
 	cfg          *config.DiscoveryConfig
 	conn         *sql.DB
-	// conn         *go_ora.Connection
+	log          *logrus.Logger
 }
 
-var (
-	OraInstances []*OracleInstance
-	OraInstMutex sync.Mutex
-	processWg    sync.WaitGroup
-)
-
-func (oi *OracleInstance) Query(timeout time.Duration, query string, t *DataTable) (int, error) {
+func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.DataTable) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	rows, err := oi.conn.QueryContext(ctx, query, nil)
+	rows, err := oi.conn.QueryContext(ctx, query)
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, errors.New("Oracle query timed out")
 	}
 	if err != nil {
-		log.Warnf("Error in instance Query:%s", err)
+		oi.Warnf("Error in instance Query:%s", err)
 		return 0, err
 	}
 	c, err := rows.Columns()
 	if err != nil {
-		log.Warnf("Error Query Columns:%s", err)
+		oi.Warnf("Error Query Columns:%s", err)
 		return 0, err
 	}
 	t.SetHeader(c)
@@ -92,7 +87,7 @@ func (oi *OracleInstance) InitDBData() error {
 	connStr := "oracle://" + oi.cfg.OracleConnectUser + ":" + oi.cfg.OracleConnectPass + "@" + dsn
 	oi.conn, err = sql.Open("oracle", connStr)
 	if err != nil {
-		log.Warnf("Can't create connection: %s ", err)
+		oi.Warnf("Can't create connection: %s ", err)
 		return err
 	}
 	oi.conn.SetConnMaxLifetime(0)
@@ -100,17 +95,17 @@ func (oi *OracleInstance) InitDBData() error {
 	oi.conn.SetMaxOpenConns(3)
 	err = oi.conn.Ping()
 	if err != nil {
-		log.Warnf("Can't ping connection: %s ", err)
+		oi.Warnf("Can't ping connection: %s ", err)
 		return err
 	}
 
 	// Initialize instance Data.
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
-	log.Info("Initialize Instance Info...")
+	oi.Infof("Initialize Instance Info...")
 	query := "select INSTANCE_NUMBER,INSTANCE_NAME,HOST_NAME,VERSION,STARTUP_TIME,STATUS,DATABASE_STATUS,INSTANCE_ROLE,ACTIVE_STATE,BLOCKED,SHUTDOWN_PENDING from V$INSTANCE"
 	rows, err := oi.conn.Query(query)
 	if err != nil {
-		log.Warnf("Error in instance Query:%s", err)
+		oi.Warnf("Error in instance Query:%s", err)
 		return err
 	}
 	defer rows.Close()
@@ -134,18 +129,18 @@ func (oi *OracleInstance) InitDBData() error {
 		}
 		rowsCount += 1
 	}
-	log.Infof("Rows count:%s", rowsCount)
+	oi.Infof("Rows count:%s", rowsCount)
 
 	// Initialize DB Data Only if instance in OPEN mode.
 
 	if oi.InstInfo.Status != "OPEN" {
 		return nil
 	}
-	log.Info("Initialize Database Info...")
+	oi.Infof("Initialize Database Info...")
 	query = "select DBID,NAME,CREATED,DB_UNIQUE_NAME,OPEN_MODE from v$database"
 	rows, err = oi.conn.Query(query)
 	if err != nil {
-		log.Warnf("Error in database Query:%s", err)
+		oi.Warnf("Error in database Query:%s", err)
 		return err
 	}
 	defer rows.Close()
@@ -163,71 +158,8 @@ func (oi *OracleInstance) InitDBData() error {
 		}
 		rowsCount += 1
 	}
-	log.Infof("Rows count: %s ", rowsCount)
+	oi.Infof("Rows count: %s ", rowsCount)
 
-	log.Infof("Found %+v", oi)
+	oi.Infof("Found %+v", oi)
 	return nil
-}
-
-func discover(cfg *config.DiscoveryConfig) {
-	oinstances, err := ScanSystemForInstances(cfg.OracleDiscoverySidRegex)
-	if err != nil {
-		log.Errorf("Error on scan isntances :%s", err)
-		return
-	}
-	for _, inst := range oinstances {
-		inst.cfg = cfg
-		log.Infof("Instance found: %s", inst.DiscoveredSid)
-		err := inst.InitDBData()
-		if err != nil {
-			log.Warnf("Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
-		}
-	}
-	OraInstMutex.Lock()
-	OraInstances = oinstances
-	OraInstMutex.Unlock()
-}
-
-func discoveryProcess(cfg *config.DiscoveryConfig, done chan bool) {
-	log.Infof("Ticket %s", cfg.OracleDiscoveryInterval.String())
-	discoveryTicker := time.NewTicker(cfg.OracleDiscoveryInterval)
-	defer discoveryTicker.Stop()
-	log.Info("Before loop")
-	first := make(chan bool, 1)
-	first <- true
-
-	for {
-		log.Info("Scanning oracle instances")
-		select {
-		case <-first:
-			discover(cfg)
-		case t := <-discoveryTicker.C:
-			log.Infof("Scanning oracle instances at %s", t)
-			discover(cfg)
-		case <-done:
-			return
-		}
-	}
-}
-
-func ScanSystemForInstances(procPattern string) ([]*OracleInstance, error) {
-	DetectedInstances := []*OracleInstance{}
-
-	pf := ProcessFinder{}
-
-	pmonfound, err := pf.FullPattern(procPattern)
-	if err != nil {
-		log.Error(err)
-	}
-
-	for sid, proc := range pmonfound {
-
-		orainst := &OracleInstance{
-			DiscoveredSid: sid,
-			PMONpid:       proc.Pid,
-		}
-		DetectedInstances = append(DetectedInstances, orainst)
-	}
-
-	return DetectedInstances, nil
 }
