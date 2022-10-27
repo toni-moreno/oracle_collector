@@ -1,6 +1,6 @@
 # Oracle Collector
 
-Oracle Collector is an Open Source tool to get oracle metrics from any oracle instance in 
+Oracle Collector is an Open Source tool to get oracle metrics from any oracle instance running in any compatible ( Linux ) server, it runs as an execd plugin for telegraf
 
 
 ## Install from precompiled packages
@@ -15,7 +15,7 @@ If you want to build a package yourself, or contribute. Here is a guide for how 
 
 ### Dependencies
 
-- Go 1.17
+- Go 1.19
 
 ### Get Code
 
