@@ -3,15 +3,16 @@
 
 [general]
 
-logdir = "./log"
-loglevel = "debug"
-log_mode = "console"
+log_dir = "./log"
+#Log level for main log 
+log_level = "debug"
 
 
 [output]
 
 buffer_size = 10000
 flush_period = "10s"
+#batch_size = 1000
 
 [oracle-discovery]
 
@@ -22,67 +23,76 @@ oracle_connect_user= "system"
 oracle_connect_pass= "toni1234"
 oracle_connect_dsn="192.168.1.84:1521/SID?transport_connect_timeout=5&retry_count=3"
 
-extra_labels = ["environtment=PRO","group=Exadata","release=Legacy"]
+extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
-[[oracle-discovery.dinamic-labels]]
+#Log level for all oracle interaction 
+# trace,debug,info,warn/warning,error,fatal,panic
+oracle_log_level = "debug"
+
+[[oracle-discovery.dynamic-labels]]
 
 sid_regex=".*P[0-9]$"
-extra_labels=["environment=PRO"]
+extra_labels={environment="PRO"}
 
-[[oracle-discovery.dinamic-labels]]
+[[oracle-discovery.dynamic-labels]]
 
 sid_regex=".*R[0-9]$"
-extra_labels=["environment=PRE"]
+extra_labels={environment="PRE"}
 
-[[oracle-discovery.dinamic-labels]]
+[[oracle-discovery.dynamic-labels]]
 
 sid_regex=".*D[0-9]$"
-extra_labels=["environment=DES"]
+extra_labels={environment="DES"}
 
-[[oracle-discovery.dinamic-labels]]
+[[oracle-discovery.dynamic-labels]]
 
 sid_regex=".*I[0-9]$"
-extra_labels=["environment=INT"]
+extra_labels={environment="INT"}
 
-[SystemMonitor]
+[[oracle-discovery.dynamic-labels]]
 
-query_period = "60s"
+sid_regex="^XE$"
+extra_labels={environment="LAB"}
 
-[[process_groups]]
-process_pattern = "DBWn"
-process_label = "DatabaseWritterProcess (DBWn)"
+# [SystemMonitor]
 
-[[process_groups]]
-process_pattern = "LGWR"
-process_label = "LogWriterProcess (LGWR)"
+# query_period = "60s"
 
-[[process_groups]]
-process_pattern = "CKPT"
-process_label = "Checkpoint Process (CKPT)"
+# [[process_groups]]
+# process_pattern = "DBWn"
+# process_label = "DatabaseWritterProcess (DBWn)"
 
-[[process_groups]]
-process_pattern = "SMON"
-process_label = "System Monitor Process (SMON)"
+# [[process_groups]]
+# process_pattern = "LGWR"
+# process_label = "LogWriterProcess (LGWR)"
 
-[[process_groups]]
-process_pattern = "PMON"
-process_label = "Process Monitor Process (PMON)"
+# [[process_groups]]
+# process_pattern = "CKPT"
+# process_label = "Checkpoint Process (CKPT)"
 
-[[process_groups]]
-process_pattern = "RECO"
-process_label = "Recoverer Process (RECO)"
+# [[process_groups]]
+# process_pattern = "SMON"
+# process_label = "System Monitor Process (SMON)"
 
-[[process_groups]]
-process_pattern = "CJQ0,J[0-9]{3}"
-process_label = "Job Queue Processes"
+# [[process_groups]]
+# process_pattern = "PMON"
+# process_label = "Process Monitor Process (PMON)"
 
-[[process_groups]]
-process_pattern = "ARC[0-9]{1}"
-process_label = "Archiver Processes"
+# [[process_groups]]
+# process_pattern = "RECO"
+# process_label = "Recoverer Process (RECO)"
 
-[[process_groups]]
-process_pattern = "QMN[0-9]{1}"
-process_label = "Queue Monitor Processes (QMNn)"
+# [[process_groups]]
+# process_pattern = "CJQ0,J[0-9]{3}"
+# process_label = "Job Queue Processes"
+
+# [[process_groups]]
+# process_pattern = "ARC[0-9]{1}"
+# process_label = "Archiver Processes"
+
+# [[process_groups]]
+# process_pattern = "QMN[0-9]{1}"
+# process_label = "Queue Monitor Processes (QMNn)"
 
 
 [oracle-monitor]
@@ -93,30 +103,22 @@ default_query_timeout = "10s"
 [[oracle-monitor.mgroup]]
 
 name ="BaseMetrics"
-query_period = "60s"
+query_period = "20s"
 query_timeout = "5s"
 
 [[oracle-monitor.mgroup.metric]]
 context = "sessions"
 labels = [ "status", "type" ]
 metrics_desc = { value= "Gauge metric with count of sessions by status and type." }
-metric_type = { value='integer'}
+metrics_type = { value='integer'}
 request = "SELECT status, type, COUNT(*) as value FROM v$session GROUP BY status, type"
 
 [[oracle-monitor.mgroup.metric]]
 context = "resource"
 labels = [ "resource_name" ]
 metrics_desc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
-metric_type = { value='integer'}
+metrics_type = { current_utilization='integer',limit_value='integer'}
 request="SELECT resource_name,current_utilization,CASE WHEN TRIM(limit_value) LIKE 'UNLIMITED' THEN '-1' ELSE TRIM(limit_value) END as limit_value FROM v$resource_limit"
-
-[[oracle-monitor.mgroup.metric]]
-context = "asm_diskgroup"
-labels = [ "name" ]
-metrics_desc = { total = "Total size of ASM disk group.", free = "Free space available on ASM disk group." }
-metrics_type = { total = 'integer', free = 'integer'}
-request = "SELECT name,total_mb*1024*1024 as total,free_mb*1024*1024 as free FROM v$asm_diskgroup_stat where exists (select 1 from v$datafile where name like '+%')"
-ignorezeroresult = true
 
 [[oracle-monitor.mgroup.metric]]
 context = "activity"
@@ -134,7 +136,7 @@ request = "SELECT COUNT(*) as count FROM v$process"
 [[oracle-monitor.mgroup.metric]]
 context = "wait_time"
 metrics_desc = { value="Generic counter metric from v$waitclassmetric view in Oracle." }
-metrics_type = { value='integer'}
+metrics_type = { value='float'}
 fieldtoappend= "wait_class"
 request = '''
 SELECT
@@ -164,6 +166,8 @@ WHERE dtum.tablespace_name = dt.tablespace_name
 ORDER by tablespace
 '''
 
+
+
 [[oracle-monitor.mgroup]]
 
 name ="AsmMetrics"
@@ -171,6 +175,13 @@ instance_filter = "ASM"
 query_period = "60s"
 query_timeout = "10s"
 
+[[oracle-monitor.mgroup.metric]]
+context = "asm_diskgroup"
+labels = [ "name" ]
+metrics_desc = { total = "Total size of ASM disk group.", free = "Free space available on ASM disk group." }
+metrics_type = { total = 'integer', free = 'integer'}
+request = "SELECT name,total_mb*1024*1024 as total,free_mb*1024*1024 as free FROM v$asm_diskgroup_stat where exists (select 1 from v$datafile where name like '+%')"
+ignorezeroresult = true
 
 [[oracle-monitor.mgroup.metric]]
 context = "diskgroup_size"
@@ -201,28 +212,28 @@ SELECT instance_number                      AS inst_id,
   FROM v$instance
 '''
 
-#[[oracle-monitor.mgroup.metric]]
-#context = "asm_dg_stat"
-#labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name" ]
-#metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
-#metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", bytes_written = "counter", iops = "counter" }
-#request = '''
-#  SELECT i.instance_number              AS inst_id,
-#         i.host_name                    AS node_name,
-#         i.instance_name,
-#         g.name                         AS diskgroup_name,
-#         SUM (ds.reads)                 AS reads,
-#         SUM (ds.writes)                AS writes,
-#         SUM (ds.bytes_read)            AS bytes_read,
-#         SUM (ds.bytes_written)         AS bytes_written,
-#         SUM (ds.reads + ds.writes)     AS iops
-#    FROM v$asm_disk_stat ds, v$asm_diskgroup_stat g, v$instance i
-#   WHERE ds.mount_status = 'CACHED' AND ds.group_number = g.group_number
-#GROUP BY i.instance_number,
-#         i.host_name,
-#         i.instance_name,
-#         g.name
-#'''
+[[oracle-monitor.mgroup.metric]]
+context = "asm_dg_stat"
+labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name" ]
+metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
+metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", bytes_written = "counter", iops = "counter" }
+request = '''
+ SELECT i.instance_number              AS inst_id,
+        i.host_name                    AS node_name,
+        i.instance_name,
+        g.name                         AS diskgroup_name,
+        SUM (ds.reads)                 AS reads,
+        SUM (ds.writes)                AS writes,
+        SUM (ds.bytes_read)            AS bytes_read,
+        SUM (ds.bytes_written)         AS bytes_written,
+        SUM (ds.reads + ds.writes)     AS iops
+   FROM v$asm_disk_stat ds, v$asm_diskgroup_stat g, v$instance i
+  WHERE ds.mount_status = 'CACHED' AND ds.group_number = g.group_number
+GROUP BY i.instance_number,
+        i.host_name,
+        i.instance_name,
+        g.name
+'''
 
 [[oracle-monitor.mgroup.metric]]
 context = "asm_disk_stat"
@@ -319,6 +330,7 @@ GROUP BY i.instance_number,
 
 name ="CustomMetrics"
 query_period = "5m"
+query_timeout = "5s"
 
 [[oracle-monitor.mgroup.metric]]
 context = "slow_queries"
@@ -355,21 +367,21 @@ request = "select * from (select segment_name,sum(bytes) as cluster_bytes from u
 
 [[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metrics_desc = {table_bytes="Gauge metric with the size of the tables in user segments."}
+metrics_desc = {table_bytes="Gauge metric with the size of the tables in dba segments."}
 metrics_type = {table_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_bytes from dba_segments where segment_type='TABLE' group by segment_name) order by table_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
 [[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
+metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in dba segments."}
 metrics_type = {table_partition_bytes='integer' }
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as table_partition_bytes from dba_segments where segment_type='TABLE PARTITION' group by segment_name) order by table_partition_bytes DESC FETCH NEXT 100 ROWS ONLY"
 
 [[oracle-monitor.mgroup.metric]]
 context = "size_dba_segments_top100"
-metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
+metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in dba segments."}
 metrics_type = {cluster_bytes='integer'}
 labels = ["segment_name"]
 request = "select * from (select segment_name,sum(bytes) as cluster_bytes from dba_segments where segment_type='CLUSTER' group by segment_name) order by cluster_bytes DESC FETCH NEXT 100 ROWS ONLY"
