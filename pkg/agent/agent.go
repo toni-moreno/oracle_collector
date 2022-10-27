@@ -82,10 +82,12 @@ func Start() {
 
 	cfg := MainConfig.OraMon
 
+	chains := make([]chan bool, len(cfg.MetricGroup))
 	for i, group := range cfg.MetricGroup {
+		chains[i] = make(chan bool)
 		log.Infof("Begin [%d] Collecting data from Group %s", i, group.Name)
 		processor := InitGroupProcessor(group, oracle.OraList)
-		processor.StartCollection(done, &gatherWg)
+		processor.StartCollection(chains[i], &gatherWg)
 	}
 	// init OracleMonitor Process
 	gatherWg.Wait()

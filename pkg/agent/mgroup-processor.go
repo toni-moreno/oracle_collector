@@ -15,6 +15,7 @@ type MGroupProcessor struct {
 	InstanceList    *oracle.InstanceList
 	OracleInstances []*oracle.OracleInstance
 	cfg             *config.OracleMetricGroupConfig
+	InstNames       []string
 }
 
 func InitGroupProcessor(cfg *config.OracleMetricGroupConfig, oralist *oracle.InstanceList) *MGroupProcessor {
@@ -26,6 +27,7 @@ func InitGroupProcessor(cfg *config.OracleMetricGroupConfig, oralist *oracle.Ins
 }
 
 func (mgp *MGroupProcessor) UpdateInstances() int {
+	mgp.InstNames = nil
 	var filtered []*oracle.OracleInstance
 	instances := mgp.InstanceList.GetList()
 	if len(mgp.cfg.InstanceFilter) != 0 {
@@ -33,10 +35,14 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 			match, _ := regexp.MatchString(mgp.cfg.InstanceFilter, i.InstInfo.InstName)
 			if match {
 				filtered = append(filtered, i)
+				mgp.InstNames = append(mgp.InstNames, i.InstInfo.InstName)
 			}
 		}
 	} else {
 		filtered = instances
+		for _, i := range instances {
+			mgp.InstNames = append(mgp.InstNames, i.InstInfo.InstName)
+		}
 	}
 	mgp.OracleInstances = filtered
 	return len(mgp.OracleInstances)
@@ -44,7 +50,9 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 
 func (mgp *MGroupProcessor) ProcesQuery() {
 	n := mgp.UpdateInstances()
-	log.Infof("Number of instances found %d", n)
+	mgp.BroadCastInfof("Init Query Process on [%d] Instances [%+v] ", n, mgp.InstNames)
+
+	log.Infof("Processor [%s] new Iteration on [%d] Instances [%+v]", mgp.cfg.Name, n, mgp.InstNames)
 	for _, i := range mgp.OracleInstances {
 		extraLabels := i.GetExtraLabels()
 		for _, q := range mgp.cfg.OracleMetrics {
@@ -81,12 +89,11 @@ func (mgp *MGroupProcessor) StartCollection(done chan bool, s *sync.WaitGroup) {
 		first <- true
 
 		for {
-			log.Info("Begin Query Processor")
 			select {
 			case <-first:
 				mgp.ProcesQuery()
-			case t := <-qTicker.C:
-				log.Infof("Begin Query Processor %s", t)
+			case <-qTicker.C:
+				log.Info("Begin Query Processor")
 				mgp.ProcesQuery()
 			case <-done:
 				return

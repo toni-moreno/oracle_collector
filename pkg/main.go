@@ -28,7 +28,6 @@ var (
 	// homeDir    string
 	pidFile string
 	logDir  = filepath.Join(appdir, "log")
-	logMode = "console"
 	confDir = filepath.Join(appdir, "conf")
 	// dataDir    = confDir
 	configFile = filepath.Join(confDir, "oracle_collector.toml")
@@ -58,8 +57,7 @@ func flags() *flag.FlagSet {
 
 	//--------------------------------------------------------------
 	f.StringVar(&configFile, "config", configFile, "config file")
-	f.StringVar(&logMode, "logmode", logDir, "log mode [console/file] default console")
-	f.StringVar(&logDir, "logs", logDir, "log directory (only apply if action=hamonitor and logmode=file)")
+	f.StringVar(&logDir, "logdir", logDir, "log directory  where to create al logs")
 	// f.StringVar(&homeDir, "home", homeDir, "home directory")
 	// f.StringVar(&dataDir, "data", dataDir, "Data directory")
 	f.StringVar(&pidFile, "pidfile", pidFile, "path to pid file")

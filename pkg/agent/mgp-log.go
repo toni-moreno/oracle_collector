@@ -25,3 +25,10 @@ func (mgp *MGroupProcessor) Warnf(i *oracle.OracleInstance, expr string, vars ..
 	expr2 := "GroupProc [" + mgp.cfg.Name + "] " + expr
 	i.Warnf(expr2, vars...)
 }
+
+func (mgp *MGroupProcessor) BroadCastInfof(expr string, vars ...interface{}) {
+	for _, i := range mgp.OracleInstances {
+		expr2 := "GroupProc[" + mgp.cfg.Name + "] " + expr
+		i.Infof(expr2, vars...)
+	}
+}

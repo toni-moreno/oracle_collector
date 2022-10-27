@@ -49,24 +49,16 @@ func LoadConfigFile(filename string) (*Config, error) {
 	if _, err := toml.Decode(string(tomlData), cfg); err != nil {
 		return cfg, err
 	}
-	// // Validate Cluster Config
-	// for _, c := range cfg.Influxcluster {
+	// // Validate Some Config
+	// for _, c := range cfg.XXXXX {
 	// 	err := c.ValidateCfg(cfg)
 	// 	if err != nil {
 	// 		return cfg, err
 	// 	}
 	// }
-	// // Validate Backend Config
-	// for _, b := range cfg.Influxdb {
+	// // Validate Some other Config
+	// for _, b := range cfg.XXXXX{
 	// 	err := b.ValidateCfg(cfg)
-	// 	if err != nil {
-	// 		return cfg, err
-	// 	}
-	// }
-
-	// // Validate Backend Config
-	// for _, h := range cfg.HTTPConfig {
-	// 	err := h.ValidateCfg(cfg)
 	// 	if err != nil {
 	// 		return cfg, err
 	// 	}

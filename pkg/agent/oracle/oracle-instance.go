@@ -91,7 +91,7 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	start := time.Now()
-	rows, err := oi.conn.QueryContext(ctx, query)
+	rows, err := oi.conn.QueryContext(ctx, query) // DATA RACE FOUND
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, 0, errors.New("Oracle query timed out")
 	}
