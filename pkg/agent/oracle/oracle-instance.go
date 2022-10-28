@@ -11,6 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/influxdata/telegraf"
+	"github.com/influxdata/telegraf/metric"
+
 	_ "github.com/sijms/go-ora/v2"
 	"github.com/sirupsen/logrus"
 
@@ -55,13 +58,18 @@ type OracleInstance struct {
 	conn         *sql.DB
 	log          *logrus.Logger
 	cmutex       sync.Mutex
+	labels       map[string]string
 }
 
 func (oi *OracleInstance) GetExtraLabels() map[string]string {
-	labels := make(map[string]string)
+	return oi.labels
+}
+
+func (oi *OracleInstance) initExtraLabels() map[string]string {
+	oi.labels = make(map[string]string)
 	// First fixed labels
 	for k, v := range oi.cfg.ExtraLabels {
-		labels[k] = v
+		oi.labels[k] = v
 	}
 	// Dinamic labels.
 	SID := oi.InstInfo.InstName // oi.Discovered SID
@@ -71,23 +79,22 @@ func (oi *OracleInstance) GetExtraLabels() map[string]string {
 		match, err := regexp.MatchString(rule.SidRegex, SID)
 		if err != nil {
 			oi.log.Warnf("Error on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
-			return labels
+			return oi.labels
 		}
 		if match {
 			for k, v := range rule.ExtraLabels {
-				labels[k] = v
+				oi.labels[k] = v
 			}
 		}
 	}
 	// Oracle Mandatory Labels.
 
-	labels["instance"] = oi.InstInfo.InstName
+	oi.labels["instance"] = oi.InstInfo.InstName
 	// labels["instance_num"] = strconv.Itoa(oi.InstInfo.InstNumber)
-	labels["instance_role"] = oi.InstInfo.InstanceRole
-	labels["db"] = oi.DBInfo.DbName
+	oi.labels["instance_role"] = oi.InstInfo.InstanceRole
+	oi.labels["db"] = oi.DBInfo.DbName
 	// labels["db_unique_name"] = oi.DBInfo.DBUniqName
-
-	return labels
+	return oi.labels
 }
 
 func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.DataTable) (int, time.Duration, error) {
@@ -95,8 +102,8 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	defer cancel()
 	start := time.Now()
 	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
 	rows, err := oi.conn.QueryContext(ctx, query) // DATA RACE FOUND
-	oi.cmutex.Unlock()
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, 0, errors.New("Oracle query timed out")
 	}
@@ -104,13 +111,13 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 		elapsed := time.Since(start)
 		return 0, elapsed, fmt.Errorf("Error in instance Query:%s", err)
 	}
+	defer rows.Close()
 	c, err := rows.Columns()
 	if err != nil {
 		elapsed := time.Since(start)
 		return 0, elapsed, fmt.Errorf("Error on Query Columns:%s", err)
 	}
 	t.SetHeader(c)
-	defer rows.Close()
 
 	for rows.Next() {
 		rowpointers := t.AppendEmptyRow()
@@ -145,15 +152,22 @@ func (oi *OracleInstance) UpdateInfo() error {
 	oi.cmutex.Lock()
 	defer oi.cmutex.Unlock()
 
-	rows, err := oi.conn.Query(query)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rows_i, err := oi.conn.QueryContext(ctx, query)
+	defer rows_i.Close()
+	if ctx.Err() == context.DeadlineExceeded {
+		return errors.New("Oracle Info query timed out")
+	}
 	if err != nil {
 		oi.Warnf("Error in instance Query:%s", err)
 		return err
 	}
-	defer rows.Close()
+
 	rowsCount := 0
-	for rows.Next() {
-		err = rows.Scan(
+	for rows_i.Next() {
+		err = rows_i.Scan(
 			&oi.InstInfo.InstNumber,
 			&oi.InstInfo.InstName,
 			&oi.InstInfo.HostName,
@@ -180,15 +194,15 @@ func (oi *OracleInstance) UpdateInfo() error {
 	}
 	oi.Infof("[DISCOVERY] Initialize/Update Database Info...")
 	query = "select DBID,NAME,CREATED,DB_UNIQUE_NAME,OPEN_MODE from v$database"
-	rows, err = oi.conn.Query(query)
+	rows_db, err := oi.conn.QueryContext(ctx, query)
 	if err != nil {
 		oi.Warnf("[DISCOVERY] Error in database Query:%s", err)
 		return err
 	}
-	defer rows.Close()
+	defer rows_db.Close()
 	rowsCount = 0
-	for rows.Next() {
-		err = rows.Scan(
+	for rows_db.Next() {
+		err = rows_db.Scan(
 			&oi.DBInfo.DBID,
 			&oi.DBInfo.DbName,
 			&oi.DBInfo.Created,
@@ -201,7 +215,8 @@ func (oi *OracleInstance) UpdateInfo() error {
 		rowsCount += 1
 	}
 	oi.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
-	oi.Debugf("[DISCOVERY] Found %+v", oi)
+	oi.Debugf("[DISCOVERY] Found %+v", oi) // DATA RACE DETECTED
+	oi.initExtraLabels()
 	return nil
 }
 
@@ -222,7 +237,13 @@ func (oi *OracleInstance) Init(loglevel string) error {
 	oi.conn.SetConnMaxLifetime(0)
 	oi.conn.SetMaxIdleConns(3)
 	oi.conn.SetMaxOpenConns(3)
-	err = oi.conn.Ping()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = oi.conn.PingContext(ctx)
+	if ctx.Err() == context.DeadlineExceeded {
+		oi.cmutex.Unlock()
+		return errors.New("Oracle Ping timed out")
+	}
 	if err != nil {
 		oi.Warnf("Can't ping connection: %s ", err)
 		oi.cmutex.Unlock()
@@ -240,4 +261,31 @@ func (oi *OracleInstance) End() error {
 		oi.Errorf("Error while closing oracle connection: %s:", err)
 	}
 	return nil
+}
+
+func (oi *OracleInstance) StatusMetrics(process_ok bool) []telegraf.Metric {
+	tags := make(map[string]string)
+	// first added extra tags
+	for k, v := range oi.labels {
+		tags[k] = v
+	}
+	fields := make(map[string]interface{})
+
+	fields["proc_ok"] = process_ok
+	fields["proc_pid"] = oi.PMONpid
+	fields["inst_active_state"] = oi.InstInfo.ActiveState
+	fields["inst_bloqued"] = oi.InstInfo.Bloqued
+	fields["inst_db_status"] = oi.InstInfo.DBStatus
+	fields["inst_number"] = oi.InstInfo.InstNumber
+	fields["inst_status"] = oi.InstInfo.Status
+	fields["inst_startup_time"] = oi.InstInfo.StartupTime
+	fields["inst_version"] = oi.InstInfo.Version
+	fields["inst_role"] = oi.InstInfo.InstanceRole
+	fields["inst_shutdown_pending"] = oi.InstInfo.ShutdownPending
+	fields["db_open_mode"] = oi.DBInfo.OpenMode
+	fields["db_created"] = oi.DBInfo.Created
+
+	status := metric.New("oracle_status", tags, fields, time.Now())
+
+	return []telegraf.Metric{status}
 }

@@ -36,13 +36,13 @@ type OutputConfig struct {
 }
 
 //SelfMonConfig configuration for self monitoring
-/*type SelfMonConfig struct {
+type SelfMonConfig struct {
 	Enabled           bool     `toml:"enabled"`
-	Freq              int      `toml:"freq"`
+	ReqPeriod              time.Duration     `toml:"request_period"`
 	Prefix            string   `toml:"prefix"`
-	InheritDeviceTags bool     `toml:"inheritdevicetags"`
+	InheritDeviceTags bool     `toml:"inherit-intance-labels"`
 	ExtraTags         []string `toml:"extra-tags"`
-}*/
+}
 
 type OracleMetricConfig struct {
 	Context          string            `toml:"context"`
@@ -73,10 +73,11 @@ type OracleMonitorConfig struct {
 type Config struct {
 	General   GeneralConfig       `toml:"general"`
 	Output    OutputConfig        `toml:"output"`
+	Selfmon  SelfMonConfig `toml:"self-monitor"`
 	Discovery DiscoveryConfig     `toml:"oracle-discovery"`
 	OraMon    OracleMonitorConfig `toml:"oracle-monitor"`
 	// Database DatabaseCfg
-	// Selfmon  SelfMonConfig
+	
 }
 
 // var MainConfig Config
