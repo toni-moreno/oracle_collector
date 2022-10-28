@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"os"
 	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/sijms/go-ora/v2"
@@ -52,6 +54,7 @@ type OracleInstance struct {
 	cfg          *config.DiscoveryConfig
 	conn         *sql.DB
 	log          *logrus.Logger
+	cmutex       sync.Mutex
 }
 
 func (oi *OracleInstance) GetExtraLabels() map[string]string {
@@ -79,10 +82,10 @@ func (oi *OracleInstance) GetExtraLabels() map[string]string {
 	// Oracle Mandatory Labels.
 
 	labels["instance"] = oi.InstInfo.InstName
-	labels["instance_num"] = strconv.Itoa(oi.InstInfo.InstNumber)
+	// labels["instance_num"] = strconv.Itoa(oi.InstInfo.InstNumber)
 	labels["instance_role"] = oi.InstInfo.InstanceRole
 	labels["db"] = oi.DBInfo.DbName
-	labels["db_unique_name"] = oi.DBInfo.DBUniqName
+	// labels["db_unique_name"] = oi.DBInfo.DBUniqName
 
 	return labels
 }
@@ -91,20 +94,20 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	start := time.Now()
+	oi.cmutex.Lock()
 	rows, err := oi.conn.QueryContext(ctx, query) // DATA RACE FOUND
+	oi.cmutex.Unlock()
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, 0, errors.New("Oracle query timed out")
 	}
 	if err != nil {
 		elapsed := time.Since(start)
-		oi.Warnf("Error in instance Query:%s", err)
-		return 0, elapsed, err
+		return 0, elapsed, fmt.Errorf("Error in instance Query:%s", err)
 	}
 	c, err := rows.Columns()
 	if err != nil {
 		elapsed := time.Since(start)
-		oi.Warnf("Error Query Columns:%s", err)
-		return 0, elapsed, err
+		return 0, elapsed, fmt.Errorf("Error on Query Columns:%s", err)
 	}
 	t.SetHeader(c)
 	defer rows.Close()
@@ -120,29 +123,28 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	return t.Length(), elapsed, nil
 }
 
-func (oi *OracleInstance) InitDBData() error {
-	var err error
+func CreateLoggerForSid(sid string, loglevel string) *logrus.Logger {
+	log := logrus.New()
+	logfilename := logDir + "/collector_" + sid + ".log"
+	f, _ := os.OpenFile(logfilename, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
+	log.Out = f
+	l, _ := logrus.ParseLevel(loglevel)
+	log.Level = l
+	customFormatter := new(logrus.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	log.Formatter = customFormatter
+	customFormatter.FullTimestamp = true
+	return log
+}
 
-	dsn := strings.ReplaceAll(oi.cfg.OracleConnectDSN, "SID", oi.DiscoveredSid)
-	connStr := "oracle://" + oi.cfg.OracleConnectUser + ":" + oi.cfg.OracleConnectPass + "@" + dsn
-	oi.conn, err = sql.Open("oracle", connStr)
-	if err != nil {
-		oi.Warnf("Can't create connection: %s ", err)
-		return err
-	}
-	oi.conn.SetConnMaxLifetime(0)
-	oi.conn.SetMaxIdleConns(3)
-	oi.conn.SetMaxOpenConns(3)
-	err = oi.conn.Ping()
-	if err != nil {
-		oi.Warnf("Can't ping connection: %s ", err)
-		return err
-	}
-
+func (oi *OracleInstance) UpdateInfo() error {
 	// Initialize instance Data.
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
-	oi.Infof("Initialize Instance Info...")
+	oi.Infof("[DISCOVERY] Initialize/Update Instance Info...")
 	query := "select INSTANCE_NUMBER,INSTANCE_NAME,HOST_NAME,VERSION,STARTUP_TIME,STATUS,DATABASE_STATUS,INSTANCE_ROLE,ACTIVE_STATE,BLOCKED,SHUTDOWN_PENDING from V$INSTANCE"
+	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
+
 	rows, err := oi.conn.Query(query)
 	if err != nil {
 		oi.Warnf("Error in instance Query:%s", err)
@@ -169,18 +171,18 @@ func (oi *OracleInstance) InitDBData() error {
 		}
 		rowsCount += 1
 	}
-	oi.Infof("Rows count:%s", rowsCount)
+	oi.Debugf("[DISCOVERY] Instance Rows:%d", rowsCount)
 
 	// Initialize DB Data Only if instance in OPEN mode.
 
 	if oi.InstInfo.Status != "OPEN" {
 		return nil
 	}
-	oi.Infof("Initialize Database Info...")
+	oi.Infof("[DISCOVERY] Initialize/Update Database Info...")
 	query = "select DBID,NAME,CREATED,DB_UNIQUE_NAME,OPEN_MODE from v$database"
 	rows, err = oi.conn.Query(query)
 	if err != nil {
-		oi.Warnf("Error in database Query:%s", err)
+		oi.Warnf("[DISCOVERY] Error in database Query:%s", err)
 		return err
 	}
 	defer rows.Close()
@@ -198,8 +200,44 @@ func (oi *OracleInstance) InitDBData() error {
 		}
 		rowsCount += 1
 	}
-	oi.Infof("Rows count: %s ", rowsCount)
+	oi.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
+	oi.Debugf("[DISCOVERY] Found %+v", oi)
+	return nil
+}
 
-	oi.Infof("Found %+v", oi)
+func (oi *OracleInstance) Init(loglevel string) error {
+	var err error
+
+	oi.log = CreateLoggerForSid(oi.DiscoveredSid, loglevel)
+
+	dsn := strings.ReplaceAll(oi.cfg.OracleConnectDSN, "SID", oi.DiscoveredSid)
+	connStr := "oracle://" + oi.cfg.OracleConnectUser + ":" + oi.cfg.OracleConnectPass + "@" + dsn
+	oi.cmutex.Lock()
+	oi.conn, err = sql.Open("oracle", connStr)
+	if err != nil {
+		oi.Warnf("Can't create connection: %s ", err)
+		oi.cmutex.Unlock()
+		return err
+	}
+	oi.conn.SetConnMaxLifetime(0)
+	oi.conn.SetMaxIdleConns(3)
+	oi.conn.SetMaxOpenConns(3)
+	err = oi.conn.Ping()
+	if err != nil {
+		oi.Warnf("Can't ping connection: %s ", err)
+		oi.cmutex.Unlock()
+		return err
+	}
+	oi.cmutex.Unlock()
+	return oi.UpdateInfo()
+}
+
+func (oi *OracleInstance) End() error {
+	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
+	err := oi.conn.Close()
+	if err != nil {
+		oi.Errorf("Error while closing oracle connection: %s:", err)
+	}
 	return nil
 }

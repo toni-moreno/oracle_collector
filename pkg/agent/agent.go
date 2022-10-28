@@ -71,7 +71,6 @@ func End() (time.Duration, error) {
 }
 
 func Start() {
-	log.Info("Before Discovery")
 	done := make(chan bool)
 	// init discovery process
 	oracle.InitDiscovery(&MainConfig.Discovery, done)
@@ -85,7 +84,7 @@ func Start() {
 	chains := make([]chan bool, len(cfg.MetricGroup))
 	for i, group := range cfg.MetricGroup {
 		chains[i] = make(chan bool)
-		log.Infof("Begin [%d] Collecting data from Group %s", i, group.Name)
+		log.Infof("[COLLECTOR] Begin [%d] Collecting data from Group [%s]", i, group.Name)
 		processor := InitGroupProcessor(group, oracle.OraList)
 		processor.StartCollection(chains[i], &gatherWg)
 	}

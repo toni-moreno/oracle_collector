@@ -34,50 +34,34 @@ func Init(cfg *config.OutputConfig) {
 	sc.DataFormat = "influx"
 	ser, err = serializers.NewSerializer(sc)
 	if err != nil {
-		log.Error("Error in init serializer")
+		log.Error("[OUTPUT] Error in init serializer")
 	}
-
-	buffer = models.NewBuffer("oracle_collector", "buff", cfg.BufferSize)
 	bufferSize = cfg.BufferSize
 	bachSize = cfg.BatchSize
 	flushPeriod = cfg.FlushPeriod
-	// MetricBufChan = make(chan *telegraf.Metric, bufferSize)
+	buffer = models.NewBuffer("oracle_collector", "buff", cfg.BufferSize)
 	chExit = make(chan bool)
 	go startOutputSender()
 }
 
-// End release DB connection
+// End release Output process
 func End() {
-	// close(MetricBufChan)
 	close(chExit)
 }
 
 func SendMetrics(metrics []telegraf.Metric) {
 	dropped := buffer.Add(metrics...)
 	if dropped > 0 {
-		log.Warnf("Dropped metrics %d", dropped)
+		log.Warnf("[OUTPUT]  Dropped metrics %d", dropped)
 	}
-	// for _, m := range metrics {
-	// 	MetricBufChan <- m
-	// }
 }
 
 func flushData() (int, error) {
-	// chanlen := len(MetricBufChan) // get number of entries in the batchpoint channel
-	// log.Infof("Flushing %d metrics of data", chanlen)
-	// out := []*telegraf.Metric{}
-	// for i := 0; i < chanlen; i++ {
-	// 	// flush them
-	// 	data := <-MetricBufChan
-	// 	out = append(out, data)
-	// 	// this process only will work if backend is  running ok elsewhere points will be lost
-	// }
 	out := buffer.Batch(buffer.Len())
 	outbytes, _ := ser.SerializeBatch(out)
 	f := bufio.NewWriter(os.Stdout)
 	defer f.Flush()
 	f.Write(outbytes)
-	// return outSinkArray(out)
 	return len(out), nil
 }
 
@@ -85,19 +69,23 @@ func startOutputSender() {
 	flushTicker := time.NewTicker(flushPeriod)
 	defer flushTicker.Stop()
 
-	log.Infof("beginning OutputSender thread")
+	log.Infof("[OUTPUT] beginning OutputSender thread")
 	for {
 		select {
 		case <-chExit:
 			// need to flush all data
 			n, err := flushData()
-			log.Infof("Flushed %d metrics: with error:%s", n, err)
-			log.Infof("EXIT from Output sender process for device:")
+			log.Infof("[OUTPUT] Flushed %d metrics: with error:%s", n, err)
+			log.Infof("[OUTPUT] EXIT from Output sender process for device:")
 			return
 		case <-flushTicker.C:
-			log.Debugf("Flushing data... ")
 			n, err := flushData()
-			log.Infof("Flushed %d metrics: with error:%s", n, err)
+			if err != nil {
+				log.Infof("[OUTPUT] Flushed %d metrics: with error:%s", n, err)
+			} else {
+				log.Infof("[OUTPUT] Flushed %d metrics: without error", n)
+			}
+
 		}
 	}
 }

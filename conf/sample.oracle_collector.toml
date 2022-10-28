@@ -17,11 +17,11 @@ flush_period = "10s"
 [oracle-discovery]
 
 oracle_discovery_interval = "5m"
-oracle_discovery_sid_regex = "^[oraxe].*_pmon_(?P<SID>[\\w]+)$"
+oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
 oracle_connect_user= "system"
-oracle_connect_pass= "toni1234"
-oracle_connect_dsn="192.168.1.84:1521/SID?transport_connect_timeout=5&retry_count=3"
+oracle_connect_pass= "manager"
+oracle_connect_dsn="192.168.1.2:1521/SID?transport_connect_timeout=5&retry_count=3"
 
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 

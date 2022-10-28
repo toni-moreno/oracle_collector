@@ -17,5 +17,5 @@ func SetLogDir(l string) {
 }
 
 func init() {
-	OraList = NewIntanceList()
+	OraList = NewInstanceList()
 }

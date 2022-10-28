@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"regexp"
 	"sync"
 	"time"
 
@@ -31,13 +30,7 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 	var filtered []*oracle.OracleInstance
 	instances := mgp.InstanceList.GetList()
 	if len(mgp.cfg.InstanceFilter) != 0 {
-		for _, i := range instances {
-			match, _ := regexp.MatchString(mgp.cfg.InstanceFilter, i.InstInfo.InstName)
-			if match {
-				filtered = append(filtered, i)
-				mgp.InstNames = append(mgp.InstNames, i.InstInfo.InstName)
-			}
-		}
+		filtered = mgp.InstanceList.GetFilteredListBySid(mgp.cfg.InstanceFilter)
 	} else {
 		filtered = instances
 		for _, i := range instances {
@@ -45,14 +38,18 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 		}
 	}
 	mgp.OracleInstances = filtered
-	return len(mgp.OracleInstances)
+	mgp.InstNames = oracle.GetSidNames(mgp.OracleInstances)
+	ntotal := len(instances)
+	nfilter := len(filtered)
+	log.Debugf("[COLLECTOR] On update Number instances total [%d] Filtered [%d]", ntotal, nfilter)
+	return nfilter
 }
 
 func (mgp *MGroupProcessor) ProcesQuery() {
 	n := mgp.UpdateInstances()
 	mgp.BroadCastInfof("Init Query Process on [%d] Instances [%+v] ", n, mgp.InstNames)
 
-	log.Infof("Processor [%s] new Iteration on [%d] Instances [%+v]", mgp.cfg.Name, n, mgp.InstNames)
+	log.Infof("[COLLECTOR] Processor [%s] new Iteration on [%d] Instances [%+v]", mgp.cfg.Name, n, mgp.InstNames)
 	for _, i := range mgp.OracleInstances {
 		extraLabels := i.GetExtraLabels()
 		for _, q := range mgp.cfg.OracleMetrics {
@@ -60,7 +57,7 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 			table := data.NewDatatableWithConfig(&q)
 			n, d, err := i.Query(mgp.cfg.QueryTimeout, q.Request, table)
 			if err != nil {
-				i.Warnf("Error on query: %s (Duration: %s)", err, d)
+				mgp.Errorf(i, "Error on query: %s (Duration: %s)", err, d)
 				continue
 			}
 			mgp.Infof(i, "Oracle Metric Query: [%s] returned [%d] rows (Transposed by: %s)(Duration: %s)", q.Context, n, q.FieldToAppend, d)
@@ -76,12 +73,10 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 }
 
 func (mgp *MGroupProcessor) StartCollection(done chan bool, s *sync.WaitGroup) {
-	log.Infof("Initializating collection process for Group (%s)", mgp.cfg.Name)
 	s.Add(1)
 	go func() {
 		defer s.Done()
 
-		log.Infof("Begin Query Processor for Group:  %s ( Period: %s )", mgp.cfg.Name, mgp.cfg.QueryPeriod.String())
 		qTicker := time.NewTicker(mgp.cfg.QueryPeriod)
 		defer qTicker.Stop()
 
@@ -91,9 +86,9 @@ func (mgp *MGroupProcessor) StartCollection(done chan bool, s *sync.WaitGroup) {
 		for {
 			select {
 			case <-first:
+				log.Infof("[COLLECTOR] Start Query Processor for Group:  %s ( Period: %s )", mgp.cfg.Name, mgp.cfg.QueryPeriod.String())
 				mgp.ProcesQuery()
 			case <-qTicker.C:
-				log.Info("Begin Query Processor")
 				mgp.ProcesQuery()
 			case <-done:
 				return
