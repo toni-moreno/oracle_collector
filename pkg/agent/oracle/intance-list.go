@@ -53,17 +53,18 @@ func (il *InstanceList) SetList(list []*OracleInstance) {
 	il.OraInstances = list
 }
 
-func (il *InstanceList) GetNewAndOldInstances(updated []*OracleInstance) ([]*OracleInstance, []*OracleInstance) {
+func (il *InstanceList) GetNewAndOldInstances(updated []*OracleInstance) ([]*OracleInstance, []*OracleInstance, []*OracleInstance) {
 	cur_sids := GetSidNames(il.OraInstances)
 	new_sids := GetSidNames(updated)
 
-	new := utils.DiffSlice(new_sids, cur_sids)
-	old := utils.DiffSlice(cur_sids, new_sids)
-
+	new := utils.SliceDiff(new_sids, cur_sids)
+	old := utils.SliceDiff(cur_sids, new_sids)
+	same := utils.SliceIntersect(cur_sids, new_sids)
 	// log.Debugf("[DISCOVERY] NEW: %+v", new)
 	// log.Debugf("[DISCOVERY] OLD: %+v", old)
 	new_oi := []*OracleInstance{}
 	old_oi := []*OracleInstance{}
+	same_oi := []*OracleInstance{}
 
 	// creating new OracleInstance array
 	for _, sid := range new {
@@ -84,7 +85,17 @@ func (il *InstanceList) GetNewAndOldInstances(updated []*OracleInstance) ([]*Ora
 		}
 	}
 
-	return new_oi, old_oi
+	// creating smae OracleInstance Array
+	for _, sid := range same {
+		for _, upd_inst := range il.OraInstances {
+			if upd_inst.DiscoveredSid == sid {
+				same_oi = append(same_oi, upd_inst)
+				break
+			}
+		}
+	}
+
+	return new_oi, old_oi, same_oi
 }
 
 func (il *InstanceList) Add(i *OracleInstance) {

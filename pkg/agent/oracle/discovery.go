@@ -3,6 +3,7 @@ package oracle
 import (
 	"time"
 
+	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -36,7 +37,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		return
 	}
 	log.Debugf("[DISCOVERY] Found [%d] Oracle Intances [%+v]", len(oinstances), GetSidNames(oinstances))
-	new, old := OraList.GetNewAndOldInstances(oinstances)
+	new, old, same := OraList.GetNewAndOldInstances(oinstances)
 	log.Debugf("[DISCOVERY] New Instances Fournd [%d]: %+v", len(new), GetSidNames(new))
 	for _, inst := range new {
 		inst.cfg = cfg
@@ -46,6 +47,7 @@ func discover(cfg *config.DiscoveryConfig) {
 			log.Errorf("Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
 		}
 		OraList.Add(inst)
+		output.SendMetrics(inst.StatusMetrics(true))
 	}
 	log.Debugf("[DISCOVERY] Old Instances Fournd [%d]: %+v", len(old), GetSidNames(old))
 	for _, inst := range old {
@@ -55,6 +57,17 @@ func discover(cfg *config.DiscoveryConfig) {
 			log.Errorf("[DISCOVERY] Error on release Instance monitor resources for [%s]: Err: %s", inst.DiscoveredSid, err)
 		}
 		OraList.Delete(inst)
+		output.SendMetrics(inst.StatusMetrics(false))
+	}
+	log.Debugf("[DISCOVERY] Same Instances Fournd [%d]: %+v", len(same), GetSidNames(same))
+	// for all other instances should update status and send metrics.
+
+	for _, inst := range same {
+		err := inst.UpdateInfo()
+		if err != nil {
+			log.Errorf("[DISCOVERY] Error on Update Instance Info for [%s]: Err: %s", inst.DiscoveredSid, err)
+		}
+		output.SendMetrics(inst.StatusMetrics(true))
 	}
 }
 
