@@ -7,6 +7,13 @@ log_dir = "./log"
 #Log level for main log 
 log_level = "debug"
 
+[self-monitor]
+
+enabled = true
+request_period = "30s"
+measurement_prefix = "go_rt_"
+extra_labels = {ifx_db="oraclecol",group="Exadata",release="Legacy"}
+
 
 [output]
 
@@ -22,7 +29,6 @@ oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 oracle_connect_user= "system"
 oracle_connect_pass= "manager"
 oracle_connect_dsn="192.168.1.2:1521/SID?transport_connect_timeout=5&retry_count=3"
-
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
 #Log level for all oracle interaction 
@@ -112,6 +118,7 @@ labels = [ "status", "type" ]
 metrics_desc = { value= "Gauge metric with count of sessions by status and type." }
 metrics_type = { value='integer'}
 request = "SELECT status, type, COUNT(*) as value FROM v$session GROUP BY status, type"
+
 
 [[oracle-monitor.mgroup.metric]]
 context = "resource"

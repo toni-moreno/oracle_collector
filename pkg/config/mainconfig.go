@@ -35,15 +35,15 @@ type OutputConfig struct {
 	BatchSize   int           `toml:"batch_size"`
 }
 
-//SelfMonConfig configuration for self monitoring
+// SelfMonConfig configuration for self monitoring
 type SelfMonConfig struct {
-	Enabled           bool     `toml:"enabled"`
-	ReqPeriod              time.Duration     `toml:"request_period"`
-	Prefix            string   `toml:"prefix"`
-	InheritDeviceTags bool     `toml:"inherit-intance-labels"`
-	ExtraTags         []string `toml:"extra-tags"`
+	Enabled     bool              `toml:"enabled"`
+	ReqPeriod   time.Duration     `toml:"request_period"`
+	Prefix      string            `toml:"measurement_prefix"`
+	ExtraLabels map[string]string `toml:"extra_labels"`
 }
 
+// InheritDeviceTags bool          `toml:"inherit-intance-labels"`
 type OracleMetricConfig struct {
 	Context          string            `toml:"context"`
 	Labels           []string          `toml:"labels"`
@@ -73,11 +73,10 @@ type OracleMonitorConfig struct {
 type Config struct {
 	General   GeneralConfig       `toml:"general"`
 	Output    OutputConfig        `toml:"output"`
-	Selfmon  SelfMonConfig `toml:"self-monitor"`
+	Selfmon   SelfMonConfig       `toml:"self-monitor"`
 	Discovery DiscoveryConfig     `toml:"oracle-discovery"`
 	OraMon    OracleMonitorConfig `toml:"oracle-monitor"`
 	// Database DatabaseCfg
-	
 }
 
 // var MainConfig Config

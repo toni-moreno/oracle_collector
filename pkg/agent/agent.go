@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/oracle"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/selfmon"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -72,6 +73,8 @@ func End() (time.Duration, error) {
 
 func Start() {
 	done := make(chan bool)
+	// init SelfMonitoring
+	selfmon.Init(&MainConfig.Selfmon)
 	// init discovery process
 	oracle.InitDiscovery(&MainConfig.Discovery, done)
 

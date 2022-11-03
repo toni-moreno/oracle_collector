@@ -16,6 +16,7 @@ import (
 	"github.com/toni-moreno/oracle_collector/pkg/agent"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/oracle"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/selfmon"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -130,6 +131,7 @@ func init() {
 	agent.SetLogger(log)
 	oracle.SetLogDir(logDir)
 	oracle.SetLogger(log)
+	selfmon.SetLogger(log)
 
 	log.Debugf("Loaded Config  :%+v", cfg)
 	log.Infof("Set Default directories : \n   - Exec: %s\n   - Config: %s\n   -Logs: %s\n", appdir, confDir, logDir)
