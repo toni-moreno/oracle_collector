@@ -45,6 +45,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		err := inst.Init(cfg.OracleLogLevel)
 		if err != nil {
 			log.Errorf("Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
+			break
 		}
 		OraList.Add(inst)
 		output.SendMetrics(inst.StatusMetrics(true))
@@ -55,6 +56,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		err := inst.End()
 		if err != nil {
 			log.Errorf("[DISCOVERY] Error on release Instance monitor resources for [%s]: Err: %s", inst.DiscoveredSid, err)
+			break
 		}
 		OraList.Delete(inst)
 		output.SendMetrics(inst.StatusMetrics(false))
