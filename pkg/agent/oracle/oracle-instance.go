@@ -231,7 +231,6 @@ func (oi *OracleInstance) Init(loglevel string) error {
 	dsn := strings.ReplaceAll(oi.cfg.OracleConnectDSN, "SID", oi.DiscoveredSid)
 	connStr := "oracle://" + oi.cfg.OracleConnectUser + ":" + oi.cfg.OracleConnectPass + "@" + dsn
 	oi.cmutex.Lock()
-	// oi.conn, err = sql.Open("oracle", connStr)
 	oi.conn, err = sql.Open("godror", connStr)
 	if err != nil {
 		log.Warnf("[DISCOVERY] Can't create connection: %s ", err)

@@ -1,8 +1,12 @@
 package data
 
 import (
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/godror/godror"
 )
 
 func convert2Int64(value interface{}) int64 {
@@ -33,6 +37,12 @@ func convert2Int64(value interface{}) int64 {
 		val = int64(value)
 	case uint64:
 		val = int64(value)
+	case godror.Number:
+		var err error
+		v := value.String()
+		if val, err = strconv.ParseInt(v, 10, 64); err != nil {
+			return val
+		}
 	case string:
 		// for testing and other apps - numbers may appear as strings
 		var err error
@@ -40,6 +50,7 @@ func convert2Int64(value interface{}) int64 {
 			return val
 		}
 	default:
+		fmt.Printf("Error in value Type %s\n", reflect.TypeOf(value))
 		return 0
 	}
 	return val
@@ -49,6 +60,7 @@ func convert2Float(value interface{}) float64 {
 	var val float64
 	// revisar esta asignación
 	switch value := value.(type) { // shadow
+
 	case float64:
 		val = value
 	case float32:
@@ -73,6 +85,12 @@ func convert2Float(value interface{}) float64 {
 		val = float64(value)
 	case uint64:
 		val = float64(value)
+	case godror.Number:
+		var err error
+		v := value.String()
+		if val, err = strconv.ParseFloat(v, 64); err != nil {
+			return val
+		}
 	case string:
 		// for testing and other apps - numbers may appear as strings
 		var err error
@@ -80,6 +98,7 @@ func convert2Float(value interface{}) float64 {
 			return val
 		}
 	default:
+		fmt.Printf("Error in value Type %s\n", reflect.TypeOf(value))
 		return 0.0
 	}
 	return val
@@ -116,7 +135,10 @@ func convert2String(value interface{}) string {
 		val = strconv.FormatUint(uint64(value), 10)
 	case string:
 		val = strings.TrimSpace(value)
+	case godror.Number:
+		return strings.TrimSpace(value.String())
 	default:
+		fmt.Printf("Error in value Type %s\n", reflect.TypeOf(value))
 		return ""
 	}
 	return val
@@ -168,6 +190,12 @@ func convert2Bool(value interface{}) bool {
 		}
 	case bool:
 		val = value
+	case godror.Number:
+		v := value.String()
+		var err error
+		if val, err = strconv.ParseBool(v); err != nil {
+			return val
+		}
 	case string:
 		// for testing and other apps - numbers may appear as strings
 		var err error
