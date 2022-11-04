@@ -28,6 +28,8 @@ func InitGroupProcessor(cfg *config.OracleMetricGroupConfig, oralist *oracle.Ins
 func (mgp *MGroupProcessor) UpdateInstances() int {
 	mgp.InstNames = nil
 	var filtered []*oracle.OracleInstance
+	// TODO: review if needed filter Instances by instance STATUS (OPEN)??
+	// may some configurable queries could be donde with instance status (MOUNT)??
 	instances := mgp.InstanceList.GetList()
 	if len(mgp.cfg.InstanceFilter) != 0 {
 		filtered = mgp.InstanceList.GetFilteredListBySid(mgp.cfg.InstanceFilter)

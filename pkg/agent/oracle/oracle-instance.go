@@ -21,27 +21,43 @@ import (
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
+// https://docs.oracle.com/database/121/REFRN/GUID-A399F608-36C8-4DF0-9A13-CEE25637653E.htm#REFRN30652
+type PdbInfo struct {
+	ConID     int
+	Name      string
+	OpenMode  string
+	Resticted string
+}
+
 type InstanceInfo struct {
 	InstNumber      int    `db:"name:INSTANCE_NUMBER"`
 	InstName        string `db:"name:INSTANCE_NAME"`
 	HostName        string `db:"name:HOST_NAME"`
 	Version         string `db:"name:VERSION"`
 	StartupTime     string `db:"name:STARTUP_TIME"`
+	Uptime          string `db:"name:UPTIME"`
 	Status          string `db:"name:STATUS"`
 	DBStatus        string `db:"name:DATABASE_STATUS"`
 	InstanceRole    string `db:"name:INSTANCE_ROLE"`
 	ActiveState     string `db:"name:ACTIVE_STATE"`
 	Bloqued         string `db:"name:BLOCKED"`
 	ShutdownPending string `db:"name:SHUTDOWN_PENDING"`
+	Archiver        string `db:"name:ARCHIVER"`
 }
 
 type DatabaseInfo struct {
-	DBID       string `db:"name:DBID"`
-	DbName     string `db:"name:NAME"`
-	Created    string `db:"name:CREATED"`
-	DBUniqName string `db:"name:DB_UNIQUE_NAME"`
-	CDB        string `db:"name:CDB"`
-	OpenMode   string `db:"name:OPEN_MODE"`
+	DBID         string    `db:"name:DBID"`
+	DbName       string    `db:"name:NAME"`
+	Created      string    `db:"name:CREATED"`
+	DBUniqName   string    `db:"name:DB_UNIQUE_NAME"`
+	CDB          string    `db:"name:CDB"`
+	OpenMode     string    `db:"name:OPEN_MODE"`
+	DatabaseRole string    `db:"name:DATABASE_ROLE"`
+	ForceLogging string    `db:"name:FORCE_LOGGING"`
+	LogMode      string    `db:"name:LOG_MODE"`
+	PDBs         []PdbInfo `db:"-"`
+	PDBTotal     int       `db:"-"`
+	PDBActive    int       `db:"-"`
 }
 
 type OracleInstance struct {
@@ -149,13 +165,28 @@ func CreateLoggerForSid(sid string, loglevel string) *logrus.Logger {
 }
 
 func (oi *OracleInstance) UpdateInfo() error {
+	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
 	// Initialize instance Data.
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
 	log.Infof("[DISCOVERY] Initialize/Update Instance Info...")
-	query := "select INSTANCE_NUMBER,INSTANCE_NAME,HOST_NAME,VERSION,STARTUP_TIME,STATUS,DATABASE_STATUS,INSTANCE_ROLE,ACTIVE_STATE,BLOCKED,SHUTDOWN_PENDING from V$INSTANCE"
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
-
+	query := `
+	select 
+		INSTANCE_NUMBER,
+		INSTANCE_NAME,
+		HOST_NAME,
+		VERSION,
+		STARTUP_TIME,
+		FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
+		STATUS,
+		DATABASE_STATUS,
+		INSTANCE_ROLE,
+		ACTIVE_STATE,
+		BLOCKED,
+		SHUTDOWN_PENDING,
+		ARCHIVER
+	from V$INSTANCE
+	`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -176,12 +207,14 @@ func (oi *OracleInstance) UpdateInfo() error {
 			&oi.InstInfo.HostName,
 			&oi.InstInfo.Version,
 			&oi.InstInfo.StartupTime,
+			&oi.InstInfo.Uptime,
 			&oi.InstInfo.Status,
 			&oi.InstInfo.DBStatus,
 			&oi.InstInfo.InstanceRole,
 			&oi.InstInfo.ActiveState,
 			&oi.InstInfo.Bloqued,
 			&oi.InstInfo.ShutdownPending,
+			&oi.InstInfo.Archiver,
 		)
 		if err != nil {
 			return err
@@ -196,7 +229,17 @@ func (oi *OracleInstance) UpdateInfo() error {
 		return nil
 	}
 	log.Infof("[DISCOVERY] Initialize/Update Database Info...")
-	query = "select DBID,NAME,CREATED,DB_UNIQUE_NAME,OPEN_MODE from v$database"
+	query = `
+		select 
+			DBID,
+			NAME,
+			CREATED,
+			DB_UNIQUE_NAME,
+			OPEN_MODE,
+			DATABASE_ROLE,
+			FORCE_LOGGING,
+			LOG_MODE 
+		from v$database`
 	rows_db, err := oi.conn.QueryContext(ctx, query)
 	if err != nil {
 		log.Warnf("[DISCOVERY] Error in database Query:%s", err)
@@ -211,6 +254,9 @@ func (oi *OracleInstance) UpdateInfo() error {
 			&oi.DBInfo.Created,
 			&oi.DBInfo.DBUniqName,
 			&oi.DBInfo.OpenMode,
+			&oi.DBInfo.DatabaseRole,
+			&oi.DBInfo.ForceLogging,
+			&oi.DBInfo.LogMode,
 		)
 		if err != nil {
 			return err
@@ -218,6 +264,38 @@ func (oi *OracleInstance) UpdateInfo() error {
 		rowsCount += 1
 	}
 	log.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
+	// Initialice PDB's info.
+	log.Infof("[DISCOVERY] Initialize/Update PDB Info...")
+	query = "select CON_ID,NAME,OPEN_MODE from v$pdbs"
+	rows_pdb, err := oi.conn.QueryContext(ctx, query)
+	if err != nil {
+		log.Warnf("[DISCOVERY] Error in PDB Query:%s", err)
+		return err
+	}
+	defer rows_pdb.Close()
+
+	rowsCount = 0
+	activeCount := 0
+	for rows_pdb.Next() {
+		pdb := PdbInfo{}
+		err = rows_pdb.Scan(
+			&pdb.ConID,
+			&pdb.Name,
+			&pdb.OpenMode,
+		)
+
+		if err != nil {
+			return err
+		}
+		rowsCount += 1
+		oi.DBInfo.PDBs = append(oi.DBInfo.PDBs, pdb)
+		if pdb.OpenMode == "READ WRITE" {
+			activeCount++
+		}
+	}
+	oi.DBInfo.PDBTotal = rowsCount
+	oi.DBInfo.PDBActive = activeCount
+	log.Debugf("[DISCOVERY] PDB's Rows:%d, Active %d", rowsCount, activeCount)
 	log.Debugf("[DISCOVERY] Found %s", oi) // DATA RACE DETECTED
 	oi.initExtraLabels()
 	return nil
@@ -242,6 +320,7 @@ func (oi *OracleInstance) Init(loglevel string) error {
 	oi.conn.SetMaxOpenConns(3)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Connection Ping
 	err = oi.conn.PingContext(ctx)
 	if ctx.Err() == context.DeadlineExceeded {
 		oi.cmutex.Unlock()
@@ -282,12 +361,51 @@ func (oi *OracleInstance) StatusMetrics(process_ok bool) []telegraf.Metric {
 	fields["inst_number"] = oi.InstInfo.InstNumber
 	fields["inst_status"] = oi.InstInfo.Status
 	fields["inst_startup_time"] = oi.InstInfo.StartupTime
+	fields["inst_uptime"] = oi.InstInfo.Uptime
 	fields["inst_version"] = oi.InstInfo.Version
 	fields["inst_role"] = oi.InstInfo.InstanceRole
 	fields["inst_shutdown_pending"] = oi.InstInfo.ShutdownPending
 	fields["db_open_mode"] = oi.DBInfo.OpenMode
 	fields["db_created"] = oi.DBInfo.Created
+	fields["db_role"] = oi.DBInfo.DatabaseRole
+	fields["db_log_mode"] = oi.DBInfo.LogMode
+	fields["db_force_logging"] = oi.DBInfo.ForceLogging
+	fields["pdbs_total"] = oi.DBInfo.PDBTotal
+	fields["pdbs_active"] = oi.DBInfo.PDBActive
 
+	instance_ok := 0
+
+	// 0 = not process
+	// 1 = instance up not mounted
+	// 2 = instance up mounted
+	// 3 = instance up and open db readpnñy
+	// 4 = instance up adn open in rw with performance errors
+	// 5 = instance up adn open in rw without performance errors
+
+	// https://docs.oracle.com/cd/B19306_01/server.102/b14237/dynviews_1131.htm#REFRN30105
+	switch oi.InstInfo.Status {
+	case "STARTED": // STARTED = 1
+		instance_ok = 1
+	case "MOUNTED": // MOUNTED = 2
+		instance_ok = 2
+	case "OPEN": // OPEN = 3
+		switch oi.DBInfo.OpenMode {
+		case "MOUNTED":
+			instance_ok = 3
+		case "READ WRITE":
+			instance_ok = 5
+		case "READ ONLY":
+			instance_ok = 3
+		default:
+			log.Errorf("Error on DB OpenMode %s", oi.DBInfo.OpenMode)
+		}
+	case "OPEN MIGRATE": // OPEN MIGRATE = 2
+		instance_ok = 2 // 3?
+	default:
+		log.Errorf("Error on Instance Active State %s", oi.InstInfo.ActiveState)
+	}
+
+	fields["instance_ok"] = instance_ok
 	status := metric.New("oracle_status", tags, fields, time.Now())
 
 	return []telegraf.Metric{status}
