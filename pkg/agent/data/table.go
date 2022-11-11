@@ -43,7 +43,8 @@ func NewDatatable(header []string) *DataTable {
 func (dt *DataTable) SetHeader(header []string) {
 	dt.Header = nil
 	for _, h := range header {
-		dt.Header = append(dt.Header, strings.ToLower(h))
+		// maybe couuld be fine to automaticaly remove spaces from headers?
+		dt.Header = append(dt.Header, strings.ToLower(strings.Trim(h, "'\"")))
 	}
 	dt.columns = len(header)
 }

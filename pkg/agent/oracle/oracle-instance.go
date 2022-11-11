@@ -365,6 +365,7 @@ func (oi *OracleInstance) StatusMetrics(process_ok bool) []telegraf.Metric {
 	fields["inst_version"] = oi.InstInfo.Version
 	fields["inst_role"] = oi.InstInfo.InstanceRole
 	fields["inst_shutdown_pending"] = oi.InstInfo.ShutdownPending
+	fields["inst_archiver"] = oi.InstInfo.Archiver
 	fields["db_open_mode"] = oi.DBInfo.OpenMode
 	fields["db_created"] = oi.DBInfo.Created
 	fields["db_role"] = oi.DBInfo.DatabaseRole

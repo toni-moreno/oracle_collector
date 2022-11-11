@@ -27,8 +27,9 @@ oracle_discovery_interval = "5m"
 oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
 oracle_connect_user= "system"
-oracle_connect_pass= "manager"
-oracle_connect_dsn="192.168.1.2:1521/SID?transport_connect_timeout=5&retry_count=3"
+oracle_connect_pass= "xxxxxxx"
+oracle_connect_dsn="192.168.1.84:1521/SID"
+
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
 #Log level for all oracle interaction 
@@ -59,47 +60,6 @@ extra_labels={environment="INT"}
 
 sid_regex="^XE$"
 extra_labels={environment="LAB"}
-
-# [SystemMonitor]
-
-# query_period = "60s"
-
-# [[process_groups]]
-# process_pattern = "DBWn"
-# process_label = "DatabaseWritterProcess (DBWn)"
-
-# [[process_groups]]
-# process_pattern = "LGWR"
-# process_label = "LogWriterProcess (LGWR)"
-
-# [[process_groups]]
-# process_pattern = "CKPT"
-# process_label = "Checkpoint Process (CKPT)"
-
-# [[process_groups]]
-# process_pattern = "SMON"
-# process_label = "System Monitor Process (SMON)"
-
-# [[process_groups]]
-# process_pattern = "PMON"
-# process_label = "Process Monitor Process (PMON)"
-
-# [[process_groups]]
-# process_pattern = "RECO"
-# process_label = "Recoverer Process (RECO)"
-
-# [[process_groups]]
-# process_pattern = "CJQ0,J[0-9]{3}"
-# process_label = "Job Queue Processes"
-
-# [[process_groups]]
-# process_pattern = "ARC[0-9]{1}"
-# process_label = "Archiver Processes"
-
-# [[process_groups]]
-# process_pattern = "QMN[0-9]{1}"
-# process_label = "Queue Monitor Processes (QMNn)"
-
 
 [oracle-monitor]
 
@@ -173,6 +133,93 @@ WHERE dtum.tablespace_name = dt.tablespace_name
 ORDER by tablespace
 '''
 
+
+[[oracle-monitor.mgroup]]
+
+name ="ZabbixMetrics"
+query_period = "20s"
+query_timeout = "5s"
+
+[[oracle-monitor.mgroup.metric]]
+#Fast Recovery Area Info
+context = "fra"
+metrics_desc = { value="Generic  metric from V$RECOVERY_FILE_DEST view in Oracle." }
+# automaticaly removes trailig and leading " and ' from the fields.
+# and transform to lowercase 
+metrics_type = { space_limit='integer',space_used='integer',space_reclaimable='integer',number_of_files='integer',usable_pct='float',restore_point='integer'}
+request = '''
+SELECT *
+FROM (
+        SELECT 'space_limit' AS METRIC, SPACE_LIMIT AS VALUE FROM V$RECOVERY_FILE_DEST
+        UNION
+        SELECT 'space_used', SPACE_USED AS VALUE FROM   V$RECOVERY_FILE_DEST
+        UNION
+        SELECT 'space_reclaimable', SPACE_RECLAIMABLE AS VALUE FROM V$RECOVERY_FILE_DEST
+        UNION
+        SELECT 'number_of_files', NUMBER_OF_FILES AS VALUE FROM V$RECOVERY_FILE_DEST
+        UNION
+        SELECT 'usable_pct', DECODE(SPACE_LIMIT, 0, 0, (100 - (100 * (SPACE_USED - SPACE_RECLAIMABLE) / SPACE_LIMIT))) AS VALUE
+        FROM  V$RECOVERY_FILE_DEST
+        UNION
+        SELECT 'restore_point', COUNT(*) AS VALUE FROM  V$RESTORE_POINT
+        UNION
+        SELECT
+            DISTINCT *
+        FROM
+            TABLE(sys.ODCIVARCHAR2LIST('space_limit', 'space_used', 'space_reclaimable', 'number_of_files', 'usable_pct','restore_point')),
+            TABLE(sys.ODCINUMBERLIST(0, 0, 0, 0, 0, 0))
+        ) PIVOT (
+        SUM(value) FOR METRIC in ('space_limit','space_used','space_reclaimable','number_of_files','usable_pct','restore_point'))
+'''
+
+[[oracle-monitor.mgroup.metric]]
+#Program Global Area
+# SQL> select name,unit,value from v$pgastat;
+# NAME                                              ;UNIT      ;     VALUE
+# --------------------------------------------------;----------;----------
+# aggregate PGA target parameter(*)                 ;bytes     ;2147483648
+# aggregate PGA auto target                         ;bytes     ; 662556672
+# global memory bound(*)                            ;bytes     ; 214743040
+# total PGA inuse(*)                                ;bytes     ;1411315712
+# total PGA allocated(*)                            ;bytes     ;1592008704
+# maximum PGA allocated                             ;bytes     ;2447543296
+# total freeable PGA memory(*)                      ;bytes     ;  85917696
+# MGA allocated (under PGA)                         ;bytes     ; 268435456
+# maximum MGA allocated                             ;bytes     ; 268435456
+# process count                                     ;          ;       122
+# max processes count                               ;          ;       131
+# PGA memory freed back to OS                       ;bytes     ;6673858560
+# total PGA used for auto workareas                 ;bytes     ;         0
+# maximum PGA used for auto workareas               ;bytes     ;  57823232
+# total PGA used for manual workareas               ;bytes     ;         0
+# maximum PGA used for manual workareas             ;bytes     ;   1067008
+# over allocation count                             ;          ;      3650
+# bytes processed                                   ;bytes     ;7.2459E+11
+# extra bytes read/written                          ;bytes     ;         0
+# cache hit percentage                              ;percent   ;       100
+# recompute count (total)                           ;          ;   5286207
+context = "pga"
+metrics_desc = { value="Generic  metric from v$pgastat view in Oracle." }
+metrics_type = { aggregate_pga_target_parameter='integer',global_memory_bound='integer',total_pga_inuse='integer',total_pga_allocated='integer',total_freeable_pga_memory='integer',cache_hit_percentage='float'}
+request = '''
+SELECT * from (
+ SELECT REPLACE(LOWER(NAME),' ','_') AS NAME, VALUE FROM V$PGASTAT WHERE NAME IN
+(
+ 'aggregate PGA target parameter',
+ 'global memory bound',
+ 'total PGA inuse',
+ 'total PGA allocated',
+ 'total freeable PGA memory',
+ 'cache hit percentage'
+)) PIVOT (
+SUM(value) FOR NAME in 
+  ('aggregate_pga_target_parameter',
+   'global_memory_bound',
+   'total_pga_inuse',
+   'total_pga_allocated',
+   'total_freeable_pga_memory',
+   'cache_hit_percentage'))
+'''
 
 
 [[oracle-monitor.mgroup]]

@@ -6,6 +6,7 @@ init_cmds = [
 watch_all = true
 watch_dirs = [
 	"$WORKDIR/pkg",
+  "$WORKDIR/conf",
 ]
 watch_exts = [".go", ".toml"]
 build_delay = 1500
