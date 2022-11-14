@@ -94,11 +94,11 @@ func (oi *OracleInstance) initExtraLabels() map[string]string {
 	// Dinamic labels.
 	SID := oi.InstInfo.InstName // oi.Discovered SID
 
-	for n, rule := range oi.cfg.DynamicLabelsBySID {
-		oi.log.Debugf("Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
+	for n, rule := range oi.cfg.DynamicParamsBySID {
+		oi.log.Debugf("EXTRA LABELS: Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
 		match, err := regexp.MatchString(rule.SidRegex, SID)
 		if err != nil {
-			oi.log.Warnf("Error on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
+			oi.log.Warnf("EXTRA LABELS: on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
 			return oi.labels
 		}
 		if match {
@@ -306,8 +306,35 @@ func (oi *OracleInstance) Init(loglevel string) error {
 
 	oi.log = CreateLoggerForSid(oi.DiscoveredSid, loglevel)
 
-	dsn := strings.ReplaceAll(oi.cfg.OracleConnectDSN, "SID", oi.DiscoveredSid)
-	connStr := "oracle://" + oi.cfg.OracleConnectUser + ":" + oi.cfg.OracleConnectPass + "@" + dsn
+	// Get Initializacion parametres
+
+	ConnectDSN := oi.cfg.OracleConnectDSN
+	ConnectUser := oi.cfg.OracleConnectUser
+	ConnectPass := oi.cfg.OracleConnectPass
+
+	for n, rule := range oi.cfg.DynamicParamsBySID {
+		log.Debugf("ORACLE INIT: Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
+		match, err := regexp.MatchString(rule.SidRegex, oi.DiscoveredSid)
+		if err != nil {
+			log.Warnf("ORACLE INIT: Error on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
+			continue
+		}
+		if match {
+			log.Infof("ORACLE INIT: Dinamic params match at rule %d:[%s] ", n, rule.SidRegex)
+			if len(rule.OracleConnectDSN) > 0 {
+				ConnectDSN = rule.OracleConnectDSN
+			}
+			if len(rule.OracleConnectUser) > 0 {
+				ConnectUser = rule.OracleConnectUser
+			}
+			if len(rule.OracleConnectPass) > 0 {
+				ConnectPass = rule.OracleConnectPass
+			}
+		}
+	}
+
+	dsn := strings.ReplaceAll(ConnectDSN, "SID", oi.DiscoveredSid)
+	connStr := "oracle://" + ConnectUser + ":" + ConnectPass + "@" + dsn
 	oi.cmutex.Lock()
 	oi.conn, err = sql.Open("godror", connStr)
 	if err != nil {

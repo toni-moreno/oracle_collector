@@ -36,30 +36,45 @@ extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 # trace,debug,info,warn/warning,error,fatal,panic
 oracle_log_level = "debug"
 
-[[oracle-discovery.dynamic-labels]]
+[[oracle-discovery.dynamic-params]]
 
 sid_regex=".*P[0-9]$"
 extra_labels={environment="PRO"}
+#oracle_connect_user= "user_pro"
+#oracle_connect_pass= "pass_pro"
+#oracle_connect_dsn="server01_IP1:1521/SID"
 
-[[oracle-discovery.dynamic-labels]]
+[[oracle-discovery.dynamic-params]]
 
 sid_regex=".*R[0-9]$"
 extra_labels={environment="PRE"}
+#oracle_connect_user= "user_pre"
+#oracle_connect_pass= "pass_pre"
+#oracle_connect_dsn="server01_IP2:1531/SID"
 
-[[oracle-discovery.dynamic-labels]]
+
+[[oracle-discovery.dynamic-params]]
 
 sid_regex=".*D[0-9]$"
-extra_labels={environment="DES"}
+extra_labels={environment="DEV"}
+#oracle_connect_user= "user_dev"
+#oracle_connect_pass= "pass_dev"
+#oracle_connect_dsn="server01_IP3:1541/SID"
 
-[[oracle-discovery.dynamic-labels]]
+
+[[oracle-discovery.dynamic-params]]
 
 sid_regex=".*I[0-9]$"
 extra_labels={environment="INT"}
+#oracle_connect_user= "user_int"
+#oracle_connect_pass= "pass_int"
+#oracle_connect_dsn="server01_IP3:1541/SID"
 
-[[oracle-discovery.dynamic-labels]]
+[[oracle-discovery.dynamic-params]]
 
 sid_regex="^XE$"
 extra_labels={environment="LAB"}
+oracle_connect_dsn="server01_IP4:1531/SID"
 
 [oracle-monitor]
 

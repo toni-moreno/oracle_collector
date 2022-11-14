@@ -13,9 +13,12 @@ type GeneralConfig struct {
 	LogLevel   string `toml:"log_level"`
 }
 
-type DinamicLabels struct {
-	SidRegex    string            `toml:"sid_regex"`
-	ExtraLabels map[string]string `toml:"extra_labels"`
+type DinamicParams struct {
+	SidRegex          string            `toml:"sid_regex"`
+	ExtraLabels       map[string]string `toml:"extra_labels"`
+	OracleConnectUser string            `toml:"oracle_connect_user"`
+	OracleConnectPass string            `toml:"oracle_connect_pass"`
+	OracleConnectDSN  string            `toml:"oracle_connect_dsn"`
 }
 
 type DiscoveryConfig struct {
@@ -26,7 +29,7 @@ type DiscoveryConfig struct {
 	OracleConnectDSN        string            `toml:"oracle_connect_dsn"`
 	ExtraLabels             map[string]string `toml:"extra_labels"`
 	OracleLogLevel          string            `toml:"oracle_log_level"`
-	DynamicLabelsBySID      []*DinamicLabels  `toml:"dynamic-labels"`
+	DynamicParamsBySID      []*DinamicParams  `toml:"dynamic-params"`
 }
 
 type OutputConfig struct {
