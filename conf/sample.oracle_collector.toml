@@ -23,12 +23,12 @@ flush_period = "10s"
 
 [oracle-discovery]
 
-oracle_discovery_interval = "5m"
+oracle_discovery_interval = "1m"
 oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
 oracle_connect_user= "system"
 oracle_connect_pass= "xxxxxxx"
-oracle_connect_dsn="192.168.1.84:1521/SID"
+oracle_connect_dsn="server01_IP0:1521/SID"
 
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
@@ -42,7 +42,7 @@ sid_regex=".*P[0-9]$"
 extra_labels={environment="PRO"}
 #oracle_connect_user= "user_pro"
 #oracle_connect_pass= "pass_pro"
-#oracle_connect_dsn="server01_IP1:1521/SID"
+#oracle_connect_dns="server01_IP1:1521/SID"
 
 [[oracle-discovery.dynamic-params]]
 
@@ -50,16 +50,7 @@ sid_regex=".*R[0-9]$"
 extra_labels={environment="PRE"}
 #oracle_connect_user= "user_pre"
 #oracle_connect_pass= "pass_pre"
-#oracle_connect_dsn="server01_IP2:1531/SID"
-
-
-[[oracle-discovery.dynamic-params]]
-
-sid_regex=".*D[0-9]$"
-extra_labels={environment="DEV"}
-#oracle_connect_user= "user_dev"
-#oracle_connect_pass= "pass_dev"
-#oracle_connect_dsn="server01_IP3:1541/SID"
+#oracle_connect_dns="server01_IP2:1531/SID"
 
 
 [[oracle-discovery.dynamic-params]]
@@ -68,13 +59,23 @@ sid_regex=".*I[0-9]$"
 extra_labels={environment="INT"}
 #oracle_connect_user= "user_int"
 #oracle_connect_pass= "pass_int"
-#oracle_connect_dsn="server01_IP3:1541/SID"
+#oracle_connect_dns="server01_IP3:1521/SID"
+
+
+[[oracle-discovery.dynamic-params]]
+
+sid_regex=".*D[0-9]$"
+extra_labels={environment="DEV"}
+#oracle_connect_user= "user_dev"
+#oracle_connect_pass= "pass_dev"
+#oracle_connect_dns="server01_IP4:1521/SID"
+
 
 [[oracle-discovery.dynamic-params]]
 
 sid_regex="^XE$"
 extra_labels={environment="LAB"}
-oracle_connect_dsn="server01_IP4:1531/SID"
+oracle_connect_dsn="192.168.1.84:1521/SID"
 
 [oracle-monitor]
 
@@ -109,11 +110,6 @@ metrics_type = { value='integer'}
 fieldtoappend = "name"
 request = "SELECT name, value FROM v$sysstat WHERE name IN ('parse count (total)', 'execute count', 'user commits', 'user rollbacks')"
 
-[[oracle-monitor.mgroup.metric]]
-context = "process"
-metrics_desc = { count="Gauge metric with count of processes." }
-metrics_type = { count='integer'}
-request = "SELECT COUNT(*) as count FROM v$process"
 
 [[oracle-monitor.mgroup.metric]]
 context = "wait_time"
@@ -152,8 +148,16 @@ ORDER by tablespace
 [[oracle-monitor.mgroup]]
 
 name ="ZabbixMetrics"
-query_period = "20s"
+query_period = "60s"
 query_timeout = "5s"
+
+[[oracle-monitor.mgroup.metric]]
+context = "process" #lista
+metrics_desc = { proc_num="Gauge metric with count of processes." }
+metrics_type = { proc_num='integer'}
+request = "SELECT COUNT(*) as proc_num FROM v$process"
+# pending sum PGA_USED_MEM, PGA_ALLOC_MEM,PGA_FREEABLE_MEM
+
 
 [[oracle-monitor.mgroup.metric]]
 #Fast Recovery Area Info
@@ -234,6 +238,217 @@ SUM(value) FOR NAME in
    'total_pga_allocated',
    'total_freeable_pga_memory',
    'cache_hit_percentage'))
+'''
+
+[[oracle-monitor.mgroup.metric]]
+# SGA (System Global Area)
+context = "sga"
+metrics_desc = { value="Generic  metric from v$sgastat view in Oracle." }
+metrics_type = { value='integer'}
+fieldtoappend= "pool"
+request = '''
+SELECT
+	POOL, SUM(BYTES) AS VALUE
+FROM (
+	SELECT LOWER(REPLACE(POOL, ' ', '_')) AS POOL,SUM(BYTES) AS BYTES FROM	V$SGASTAT
+	WHERE POOL IN ('java pool', 'large pool') GROUP BY POOL
+	UNION
+	SELECT 'shared_pool',SUM(BYTES)	FROM V$SGASTAT
+	WHERE POOL = 'shared pool' AND NAME NOT IN ('library cache', 'dictionary cache', 'free memory', 'sql area')
+	UNION
+	SELECT	NAME,BYTES FROM	V$SGASTAT WHERE POOL IS NULL AND NAME IN ('log_buffer', 'fixed_sga')
+	UNION
+	SELECT 'buffer_cache',SUM(BYTES) FROM V$SGASTAT WHERE POOL IS NULL	AND NAME IN ('buffer_cache', 'db_block_buffers')
+	UNION
+	SELECT
+		DISTINCT *
+	FROM
+		TABLE(sys.ODCIVARCHAR2LIST('buffer_cache', 'fixed_sga', 'java_pool', 'large_pool', 'log_buffer', 'shared_pool')),
+		TABLE(sys.ODCINUMBERLIST(0, 0, 0, 0, 0, 0))
+	) GROUP BY POOL
+'''
+
+
+[[oracle-monitor.mgroup.metric]]
+# Systmetrics
+# Getting only marked metrics with (*i) for integer or (*f) for floating point numbers
+
+#  mid;REPLACE(LOWER(METRIC_NAME),' ','_')               ;     value;METRIC_UNIT
+# ----;--------------------------------------------------;----------;--------------------------------------------------
+# 2000;buffer_cache_hit_ratio(*f)                        ;       100;% (LogRead - PhyRead)/LogRead
+# 2001;memory_sorts_ratio(*f)                            ;       100;% MemSort/(MemSort + DiskSort)
+# 2002;redo_allocation_hit_ratio                         ;       100;% (#Redo - RedoSpaceReq)/#Redo
+# 2003;user_transaction_per_sec                          ;         0;Transactions Per Second
+# 2004;physical_reads_per_sec                            ;         0;Reads Per Second
+# 2005;physical_reads_per_txn                            ;         0;Reads Per Txn
+# 2006;physical_writes_per_sec                           ;         0;Writes Per Second
+# 2007;physical_writes_per_txn                           ;         0;Writes Per Txn
+# 2008;physical_reads_direct_per_sec                     ;         0;Reads Per Second
+# 2009;physical_reads_direct_per_txn                     ;         0;Reads Per Txn
+# 2010;physical_writes_direct_per_sec                    ;         0;Writes Per Second
+# 2011;physical_writes_direct_per_txn                    ;         0;Writes Per Txn
+# 2012;physical_reads_direct_lobs_per_sec                ;         0;Reads Per Second
+# 2013;physical_reads_direct_lobs_per_txn                ;         0;Reads Per Txn
+# 2014;physical_writes_direct_lobs_per_sec               ;         0;Writes Per Second
+# 2015;physical_writes_direct_lobs__per_txn              ;         0;Writes Per Txn
+# 2016;redo_generated_per_sec                            ;    2.3175;Bytes Per Second
+# 2017;redo_generated_per_txn                            ;       140;Bytes Per Txn
+# 2018;logons_per_sec(*f)                                ;    .13243;Logons Per Second
+# 2019;logons_per_txn                                    ;         8;Logons Per Txn
+# 2020;open_cursors_per_sec                              ;    .94355;Cursors Per Second
+# 2021;open_cursors_per_txn                              ;        57;Cursors Per Txn
+# 2022;user_commits_per_sec                              ;         0;Commits Per Second
+# 2023;user_commits_percentage                           ;         0;% (UserCommit/TotalUserTxn)
+# 2024;user_rollbacks_per_sec(*f)                        ;         0;Rollbacks Per Second
+# 2025;user_rollbacks_percentage                         ;         0;% (UserRollback/TotalUserTxn)
+# 2026;user_calls_per_sec                                ;    .94355;Calls Per Second
+# 2027;user_calls_per_txn                                ;        57;Calls Per Txn
+# 2028;recursive_calls_per_sec                           ;   8.69061;Calls Per Second
+# 2029;recursive_calls_per_txn                           ;       525;Calls Per Txn
+# 2030;logical_reads_per_sec                             ;   2.33405;Reads Per Second
+# 2031;logical_reads_per_txn                             ;       141;Reads Per Txn
+# 2032;dbwr_checkpoints_per_sec                          ;         0;Check Points Per Second
+# 2033;background_checkpoints_per_sec                    ;         0;Check Points Per Second
+# 2034;redo_writes_per_sec                               ;    .01655;Writes Per Second
+# 2035;redo_writes_per_txn                               ;         1;Writes Per Txn
+# 2036;long_table_scans_per_sec(*f)                      ;         0;Scans Per Second
+# 2037;long_table_scans_per_txn                          ;         0;Scans Per Txn
+# 2038;total_table_scans_per_sec                         ;    .06621;Scans Per Second
+# 2039;total_table_scans_per_txn                         ;         4;Scans Per Txn
+# 2040;full_index_scans_per_sec                          ;         0;Scans Per Second
+# 2041;full_index_scans_per_txn                          ;         0;Scans Per Txn
+# 2042;total_index_scans_per_sec                         ;    .84423;Scans Per Second
+# 2043;total_index_scans_per_txn                         ;        51;Scans Per Txn
+# 2044;total_parse_count_per_sec                         ;    .31452;Parses Per Second
+# 2045;total_parse_count_per_txn                         ;        19;Parses Per Txn
+# 2046;hard_parse_count_per_sec                          ;    .01655;Parses Per Second
+# 2047;hard_parse_count_per_txn                          ;         1;Parses Per Txn
+# 2048;parse_failure_count_per_sec                       ;         0;Parses Per Second
+# 2049;parse_failure_count_per_txn                       ;         0;Parses Per Txn
+# 2050;cursor_cache_hit_ratio(*f)                        ; 266.66667;% CursorCacheHit/SoftParse
+# 2051;disk_sort_per_sec                                 ;         0;Sorts Per Second
+# 2052;disk_sort_per_txn                                 ;         0;Sorts Per Txn
+# 2053;rows_per_sort(*f)                                 ;     10.75;Rows Per Sort
+# 2054;execute_without_parse_ratio                       ;  69.84127;% (ExecWOParse/TotalExec)
+# 2055;soft_parse_ratio                                  ;  94.73684;% SoftParses/TotalParses
+# 2056;user_calls_ratio                                  ;   9.79381;% UserCalls/AllCalls
+# 2057;host_cpu_utilization_(%)                          ;   2.30796;% Busy/(Idle+Busy)
+# 2058;network_traffic_volume_per_sec                    ;1057.57325;Bytes Per Second
+# 2059;enqueue_timeouts_per_sec(*f)                      ;         0;Timeouts Per Second
+# 2060;enqueue_timeouts_per_txn                          ;         0;Timeouts Per Txn
+# 2061;enqueue_waits_per_sec                             ;         0;Waits Per Second
+# 2062;enqueue_waits_per_txn                             ;         0;Waits Per Txn
+# 2063;enqueue_deadlocks_per_sec                         ;         0;Deadlocks Per Second
+# 2064;enqueue_deadlocks_per_txn                         ;         0;Deadlocks Per Txn
+# 2065;enqueue_requests_per_sec                          ;  11.53782;Requests Per Second
+# 2066;enqueue_requests_per_txn                          ;       697;Requests Per Txn
+# 2067;db_block_gets_per_sec                             ;     .2152;Blocks Per Second
+# 2068;db_block_gets_per_txn                             ;        13;Blocks Per Txn
+# 2069;consistent_read_gets_per_sec                      ;   2.11885;Blocks Per Second
+# 2070;consistent_read_gets_per_txn                      ;       128;Blocks Per Txn
+# 2071;db_block_changes_per_sec                          ;         0;Blocks Per Second
+# 2072;db_block_changes_per_txn                          ;         0;Blocks Per Txn
+# 2073;consistent_read_changes_per_sec                   ;         0;Blocks Per Second
+# 2074;consistent_read_changes_per_txn                   ;         0;Blocks Per Txn
+# 2075;cpu_usage_per_sec                                 ;    .75692;CentiSeconds Per Second
+# 2076;cpu_usage_per_txn                                 ;   45.7257;CentiSeconds Per Txn
+# 2077;cr_blocks_created_per_sec                         ;         0;Blocks Per Second
+# 2078;cr_blocks_created_per_txn                         ;         0;Blocks Per Txn
+# 2079;cr_undo_records_applied_per_sec                   ;         0;Undo Records Per Second
+# 2080;cr_undo_records_applied_per_txn                   ;         0;Records Per Txn
+# 2081;user_rollback_undorec_applied_per_sec             ;         0;Records Per Second
+# 2082;user_rollback_undo_records_applied_per_txn        ;         0;Records Per Txn
+# 2083;leaf_node_splits_per_sec                          ;         0;Splits Per Second
+# 2084;leaf_node_splits_per_txn                          ;         0;Splits Per Txn
+# 2085;branch_node_splits_per_sec                        ;         0;Splits Per Second
+# 2086;branch_node_splits_per_txn                        ;         0;Splits Per Txn
+# 2087;px_downgraded_1_to_25%_per_sec                    ;         0;PX Operations Per Second
+# 2088;px_downgraded_25_to_50%_per_sec                   ;         0;PX Operations Per Second
+# 2089;px_downgraded_50_to_75%_per_sec                   ;         0;PX Operations Per Second
+# 2090;px_downgraded_75_to_99%_per_sec                   ;         0;PX Operations Per Second
+# 2091;px_downgraded_to_serial_per_sec                   ;         0;PX Operations Per Second
+# 2092;physical_read_total_io_requests_per_sec           ;   3.12862;Requests Per Second
+# 2093;physical_read_total_bytes_per_sec                 ;51259.3279;Bytes Per Second
+# 2094;gc_cr_block_received_per_second                   ;         0;Blocks Per Second
+# 2095;gc_cr_block_received_per_txn                      ;         0;Blocks Per Txn
+# 2096;gc_current_block_received_per_second              ;         0;Blocks Per Second
+# 2097;gc_current_block_received_per_txn                 ;         0;Blocks Per Txn
+# 2098;global_cache_average_cr_get_time                  ;         0;CentiSeconds Per Get
+# 2099;global_cache_average_current_get_time             ;         0;CentiSeconds Per Get
+# 2100;physical_write_total_io_requests_per_sec          ;    .82768;Requests Per Second
+# 2101;global_cache_blocks_corrupted(*i)                 ;         0;Blocks
+# 2102;global_cache_blocks_lost(*i)                      ;         0;Blocks
+# 2103;current_logons_count                              ;        95;Logons
+# 2104;current_open_cursors_count                        ;       147;Cursors
+# 2105;user_limit_%                                      ;         0;% Sessions/License_Limit
+# 2106;sql_service_response_time(*f)                     ;   1.50134;CentiSeconds Per Call
+# 2107;database_wait_time_ratio(*f)                      ;  94.76692;% Wait/DB_Time
+# 2108;database_cpu_time_ratio(*f)                       ;   5.23308;% Cpu/DB_Time
+# 2109;response_time_per_txn                             ;  873.7824;CentiSeconds Per Txn
+# 2110;row_cache_hit_ratio                               ;       100;% Hits/Gets
+# 2111;row_cache_miss_ratio                              ;         0;% Misses/Gets
+# 2112;library_cache_hit_ratio(*f)                       ;  95.76271;% Hits/Pins
+# 2113;library_cache_miss_ratio                          ;   4.23729;% Misses/Gets
+# 2114;shared_pool_free_%(*f)                            ;   9.66625;% Free/Total
+# 2115;pga_cache_hit_%                                   ;       100;% Bytes/TotalBytes
+# 2118;process_limit_%                                   ;  14.52381;% Processes/Limit
+# 2119;session_limit_%                                   ;  11.47287;% Sessions/Limit
+# 2120;executions_per_txn                                ;        63;Executes Per Txn
+# 2121;executions_per_sec                                ;   1.04287;Executes Per Second
+# 2122;txns_per_logon                                    ;         0;Txns Per Logon
+# 2123;database_time_per_sec                             ;   14.4642;CentiSeconds Per Second
+# 2124;physical_write_total_bytes_per_sec                ;13035.1929;Bytes Per Second
+# 2125;physical_read_io_requests_per_sec(*f)             ;         0;Requests Per Second
+# 2126;physical_read_bytes_per_sec(*f)                   ;         0;Bytes Per Second
+# 2127;physical_write_io_requests_per_sec(*f)            ;         0;Requests Per Second
+# 2128;physical_write_bytes_per_sec(*f)                  ;         0;Bytes Per Second
+# 2129;db_block_changes_per_user_call                    ;         0;Blocks Per Call
+# 2130;db_block_gets_per_user_call                       ;    .22807;Blocks Per Call
+# 2131;executions_per_user_call                          ;   1.10526;Executes Per Call
+# 2132;logical_reads_per_user_call                       ;   2.47368;Reads Per Call
+# 2133;total_sorts_per_user_call(*f)                     ;    .07018;Sorts Per Call
+# 2134;total_table_scans_per_user_call                   ;    .07018;Tables Per Call
+# 2135;current_os_load                                   ;    .25977;Number Of Processes
+# 2136;streams_pool_usage_percentage                     ;         0;% Memory allocated / Size of Streams pool
+# 2137;pq_qc_session_count                               ;         0;Sessions
+# 2138;pq_slave_session_count                            ;         0;Sessions
+# 2139;queries_parallelized_per_sec                      ;         0;Queries Per Second
+# 2140;dml_statements_parallelized_per_sec               ;         0;Statements Per Second
+# 2141;ddl_statements_parallelized_per_sec               ;         0;Statements Per Second
+# 2142;px_operations_not_downgraded_per_sec              ;         0;PX Operations Per Second
+# 2143;session_count                                     ;       148;Sessions
+# 2144;average_synchronous_single-block_read_latency     ;    .02632;Milliseconds
+# 2145;i/o_megabytes_per_second                          ;    .06621;Megabtyes per Second
+# 2146;i/o_requests_per_second                           ;   4.05562;Requests per Second
+# 2147;average_active_sessions(*f)                       ;    .14464;Active Sessions
+# 2148;active_serial_sessions(*i)                        ;         1;Sessions
+# 2149;active_parallel_sessions(*i)                      ;         0;Sessions
+# 2150;captured_user_calls                               ;         0;calls
+# 2151;replayed_user_calls                               ;         0;calls
+# 2152;workload_capture_and_replay_status                ;         0;status
+# 2153;background_cpu_usage_per_sec                      ;   4.64164;CentiSeconds Per Second
+# 2154;background_time_per_sec                           ;    .02887;Active Sessions
+# 2155;host_cpu_usage_per_sec                            ;  45.73746;CentiSeconds Per Second
+# 2156;cell_physical_io_interconnect_bytes               ;   3884032;bytes
+# 2157;temp_space_used                                   ;         0;bytes
+# 2158;total_pga_allocated                               ;1591926784;bytes
+# 2159;total_pga_used_by_sql_workareas                   ;         0;bytes
+# 2160;run_queue_per_sec                                 ;         0;Processes
+# 2161;vm_in_bytes_per_sec                               ;         0;bytes per sec
+# 2162;vm_out_bytes_per_sec                              ;         0;bytes per sec
+context = "sysmetrics"
+metrics_desc = { value="Generic  metric from v$sysmetrics view in Oracle." }
+metrics_type = { value='float'}  # most of metrics are floating point numbers
+fieldtoappend= "metric"
+request = '''
+SELECT REPLACE(LOWER(METRIC_NAME),' ','_') AS metric, VALUE
+ FROM V$SYSMETRIC WHERE
+ METRIC_ID IN (
+      2000,2001,2018,2024,2036,2050,2051,
+      2053,2059,2094,2101,2102,2106,2107,
+      2108,2112,2114,2125,2126,2127,2128,
+      2133,2147,2148,2149,2157)
+ AND GROUP_ID=2
 '''
 
 
