@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -82,6 +83,8 @@ func (oi *OracleInstance) String() string {
 }
 
 func (oi *OracleInstance) GetExtraLabels() map[string]string {
+	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
 	return oi.labels
 }
 
@@ -334,7 +337,7 @@ func (oi *OracleInstance) Init(loglevel string) error {
 	}
 
 	dsn := strings.ReplaceAll(ConnectDSN, "SID", oi.DiscoveredSid)
-	connStr := "oracle://" + ConnectUser + ":" + ConnectPass + "@" + dsn
+	connStr := "oracle://" + url.QueryEscape(ConnectUser) + ":" + url.QueryEscape(ConnectPass) + "@" + dsn
 	oi.cmutex.Lock()
 	oi.conn, err = sql.Open("godror", connStr)
 	if err != nil {
@@ -342,6 +345,7 @@ func (oi *OracleInstance) Init(loglevel string) error {
 		oi.cmutex.Unlock()
 		return err
 	}
+	log.Tracef("[DISCOVERY] Connection String: %s", connStr)
 	oi.conn.SetConnMaxLifetime(0)
 	oi.conn.SetMaxIdleConns(3)
 	oi.conn.SetMaxOpenConns(3)

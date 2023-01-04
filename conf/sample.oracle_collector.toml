@@ -26,8 +26,8 @@ flush_period = "10s"
 oracle_discovery_interval = "1m"
 oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
-oracle_connect_user= "system"
-oracle_connect_pass= "xxxxxxx"
+oracle_connect_user="C##MONIT"
+oracle_connect_pass="XXXYYY"
 oracle_connect_dsn="server01_IP0:1521/SID"
 
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
