@@ -34,7 +34,8 @@ extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
 #Log level for all oracle interaction 
 # trace,debug,info,warn/warning,error,fatal,panic
-oracle_log_level = "debug"
+# oracle_log_level = "error" #on PRO
+oracle_log_level = "debug"  #on LAB
 
 [[oracle-discovery.dynamic-params]]
 
@@ -82,26 +83,13 @@ oracle_connect_dsn="192.168.1.84:1521/SID"
 default_query_period = "60s"
 default_query_timeout = "10s"
 
+
 [[oracle-monitor.mgroup]]
 
-name ="BaseMetrics"
-query_period = "20s"
+name ="BaseMetrics_1m_DB"
+query_period = "60s"
 query_timeout = "5s"
 
-[[oracle-monitor.mgroup.metric]]
-context = "sessions"
-labels = [ "status", "type" ]
-metrics_desc = { value= "Gauge metric with count of sessions by status and type." }
-metrics_type = { value='integer'}
-request = "SELECT status, type, COUNT(*) as value FROM v$session GROUP BY status, type"
-
-
-[[oracle-monitor.mgroup.metric]]
-context = "resource"
-labels = [ "resource_name" ]
-metrics_desc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
-metrics_type = { current_utilization='integer',limit_value='integer'}
-request="SELECT resource_name,current_utilization,CASE WHEN TRIM(limit_value) LIKE 'UNLIMITED' THEN '-1' ELSE TRIM(limit_value) END as limit_value FROM v$resource_limit"
 
 [[oracle-monitor.mgroup.metric]]
 context = "activity"
@@ -109,55 +97,26 @@ metrics_desc = { value="Generic counter metric from v$sysstat view in Oracle." }
 metrics_type = { value='integer'}
 fieldtoappend = "name"
 request = "SELECT name, value FROM v$sysstat WHERE name IN ('parse count (total)', 'execute count', 'user commits', 'user rollbacks')"
-
+#https://docs.oracle.com/cd/E11882_01/server.112/e40402/stats002.htm#i375475 ( v$sysstat description)
+#https://doyensys.com/blogs/query-to-find-to-soft-parse-and-hard-parse-ratio/ ?
 
 [[oracle-monitor.mgroup.metric]]
-context = "wait_time"
+context = "wait_stats"
+labels = ["wait_class"]
 metrics_desc = { value="Generic counter metric from v$waitclassmetric view in Oracle." }
-metrics_type = { value='float'}
-fieldtoappend= "wait_class"
+metrics_type = { time_wait='float', wait_count='integer',dbtime_wait_pct='float'}
+#fieldtoappend= "wait_class"
 request = '''
 SELECT
   n.wait_class as WAIT_CLASS,
-  round(m.time_waited/m.INTSIZE_CSEC,3) as VALUE
+  round(m.time_waited/m.INTSIZE_CSEC,6) as time_wait,
+  m.wait_count as wait_count,
+  m.dbtime_in_wait as dbtime_wait_pct
 FROM
   v$waitclassmetric  m, v$system_wait_class n
 WHERE
   m.wait_class_id=n.wait_class_id AND n.wait_class != 'Idle'
 '''
-
-[[oracle-monitor.mgroup.metric]]
-context = "tablespace"
-labels = [ "tablespace", "type" ]
-metrics_desc = { bytes = "Generic counter metric of tablespaces bytes in Oracle.", max_bytes = "Generic counter metric of tablespaces max bytes in Oracle.", free = "Generic counter metric of tablespaces free bytes in Oracle.", used_percent = "Gauge metric showing as a percentage of how much of the tablespace has been used." }
-metrics_type = { bytes = 'integer', max_bytes = 'integer', free='integer',used_percent='float'}
-request = '''
-SELECT
-    dt.tablespace_name as tablespace,
-    dt.contents as type,
-    dt.block_size * dtum.used_space as bytes,
-    dt.block_size * dtum.tablespace_size as max_bytes,
-    dt.block_size * (dtum.tablespace_size - dtum.used_space) as free,
-    dtum.used_percent
-FROM  dba_tablespace_usage_metrics dtum, dba_tablespaces dt
-WHERE dtum.tablespace_name = dt.tablespace_name
-ORDER by tablespace
-'''
-
-
-[[oracle-monitor.mgroup]]
-
-name ="ZabbixMetrics"
-query_period = "60s"
-query_timeout = "5s"
-
-[[oracle-monitor.mgroup.metric]]
-context = "process" #lista
-metrics_desc = { proc_num="Gauge metric with count of processes." }
-metrics_type = { proc_num='integer'}
-request = "SELECT COUNT(*) as proc_num FROM v$process"
-# pending sum PGA_USED_MEM, PGA_ALLOC_MEM,PGA_FREEABLE_MEM
-
 
 [[oracle-monitor.mgroup.metric]]
 #Fast Recovery Area Info
@@ -190,6 +149,85 @@ FROM (
         ) PIVOT (
         SUM(value) FOR METRIC in ('space_limit','space_used','space_reclaimable','number_of_files','usable_pct','restore_point'))
 '''
+
+[[oracle-monitor.mgroup.metric]]
+# ArchiveLog
+context = "archivelog"
+labels = [ "dest_name" ]
+metrics_desc = { value="information from archivelogs only when logs in archivelog mode and status active" }
+metrics_type = { status='integer',log_sequence='integer', error_label='string'}
+request = '''
+SELECT
+    d.DEST_NAME as DEST_NAME,
+    DECODE(d.STATUS, 'VALID', 3, 'DEFERRED', 2, 'ERROR', 1, 0) as STATUS,
+    d.LOG_SEQUENCE as LOG_SEQUENCE,
+    NVL(TO_CHAR(d.ERROR), ' ') as ERROR_LABEL		
+FROM
+    V$ARCHIVE_DEST d,
+    V$DATABASE db
+WHERE 
+    d.STATUS != 'INACTIVE' 
+    AND db.LOG_MODE = 'ARCHIVELOG'
+'''
+
+
+[[oracle-monitor.mgroup]]
+
+name ="BaseMetrics_10m_INST"
+query_period = "600s"
+query_timeout = "15s"
+
+[[oracle-monitor.mgroup.metric]]
+# RedoLog
+context = "redolog"
+metrics_desc = { value="Number of available for log switching inactive/unused REDO logs" }
+metrics_type = { available='integer'}
+request = '''
+		SELECT
+			COUNT(*) as available
+		FROM
+			V$LOG	
+		WHERE 
+			STATUS IN ('INACTIVE', 'UNUSED')
+'''
+
+
+[[oracle-monitor.mgroup]]
+
+name ="BaseMetrics_1m_INST"
+query_period = "60s"
+query_timeout = "5s"
+
+[[oracle-monitor.mgroup.metric]]
+# Resource
+context = "resource"
+labels = [ "resource_name" ]
+metrics_desc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
+metrics_type = { current_utilization='integer',limit_value='integer',used_pct='float'}
+## tiene sentido monitorizar los "unlimited" ?
+request='''
+SELECT 
+    resource_name,
+    current_utilization,
+    CASE WHEN TRIM(limit_value) LIKE 'UNLIMITED' THEN '-1' ELSE TRIM(limit_value) END as limit_value,
+    CASE 
+        WHEN TRIM(limit_value) LIKE 'UNLIMITED' THEN 0 
+        WHEN TRIM(limit_value) LIKE '0' THEN 0
+        ELSE ROUND(((current_utilization*100)/limit_value),3)
+    END as USED_PCT
+FROM v$resource_limit
+'''
+
+[[oracle-monitor.mgroup.metric]]
+context = "process" #lista
+metrics_desc = { proc_num="Gauge metric with count of processes." }
+metrics_type = { proc_num='integer'}
+request = "SELECT COUNT(*) as proc_num FROM v$process"
+# pending sum PGA_USED_MEM, PGA_ALLOC_MEM,PGA_FREEABLE_MEM
+# group by PNAME ?
+
+
+
 
 [[oracle-monitor.mgroup.metric]]
 #Program Global Area
@@ -267,6 +305,64 @@ FROM (
 		TABLE(sys.ODCINUMBERLIST(0, 0, 0, 0, 0, 0))
 	) GROUP BY POOL
 '''
+
+[[oracle-monitor.mgroup.metric]]
+# Sessions 
+context = "sessions"
+metrics_desc = { value="Generic  and cooked metrics from v$session view in Oracle." }
+metrics_type = { value='integer'}
+fieldtoappend= "metric"
+request = '''
+SELECT METRIC, SUM(VALUE) AS VALUE 	FROM
+  (
+  SELECT 	LOWER(REPLACE(STATUS || ' ' || TYPE, ' ', '_')) AS METRIC, 	COUNT(*) AS VALUE
+  FROM V$SESSION 	GROUP BY STATUS, TYPE
+  UNION
+  SELECT 
+    DISTINCT *
+  FROM
+    TABLE(sys.ODCIVARCHAR2LIST('inactive_user', 'active_user', 'active_background')), 
+    TABLE(sys.ODCINUMBERLIST(0, 0, 0))
+  ) GROUP BY METRIC
+UNION
+  SELECT 'total' AS METRIC, COUNT(*) AS VALUE  FROM 	V$SESSION 
+UNION
+  SELECT 'long_time_locked' AS METRIC, COUNT(*) AS VALUE
+  FROM V$SESSION
+  WHERE
+  BLOCKING_SESSION IS NOT NULL
+  AND BLOCKING_SESSION_STATUS = 'VALID'
+  AND SECONDS_IN_WAIT > 600
+UNION
+  SELECT 'lock_rate' ,(CNT_BLOCK / CNT_ALL) * 100 pct
+  FROM
+  (
+  SELECT 	COUNT(*) CNT_BLOCK
+  FROM V$SESSION
+  WHERE BLOCKING_SESSION IS NOT NULL),
+  (
+  SELECT COUNT(*) CNT_ALL 
+  FROM V$SESSION)
+UNION
+  SELECT 'concurrency_rate',	NVL(ROUND(SUM(duty_act.CNT * 100 / num_cores.VAL)), 0)
+  FROM(
+  SELECT
+    DECODE(SESSION_STATE, 'ON CPU', 'CPU', WAIT_CLASS) WAIT_CLASS, ROUND(COUNT(*) / (60 * 15), 1) CNT
+  FROM
+    V$ACTIVE_SESSION_HISTORY sh
+  WHERE
+    sh.SAMPLE_TIME >= SYSDATE - 15 / 1440
+    AND DECODE(SESSION_STATE, 'ON CPU', 'CPU', WAIT_CLASS) IN ('Concurrency')
+  GROUP BY
+    DECODE(SESSION_STATE, 'ON CPU', 'CPU', WAIT_CLASS)
+  ) duty_act,
+  (
+  SELECT SUM(VALUE) VAL FROM V$OSSTAT
+  WHERE STAT_NAME = 'NUM_CPU_CORES'
+  ) num_cores
+'''
+
+
 
 
 [[oracle-monitor.mgroup.metric]]
@@ -451,221 +547,171 @@ SELECT REPLACE(LOWER(METRIC_NAME),' ','_') AS metric, VALUE
  AND GROUP_ID=2
 '''
 
-
 [[oracle-monitor.mgroup]]
 
-name ="AsmMetrics"
-instance_filter = "ASM"
-query_period = "60s"
-query_timeout = "10s"
+name ="BaseMetrics_1h_DB"
+query_period = "1h"
+query_timeout = "30m"
 
 [[oracle-monitor.mgroup.metric]]
-context = "asm_diskgroup"
-labels = [ "name" ]
-metrics_desc = { total = "Total size of ASM disk group.", free = "Free space available on ASM disk group." }
-metrics_type = { total = 'integer', free = 'integer'}
-request = "SELECT name,total_mb*1024*1024 as total,free_mb*1024*1024 as free FROM v$asm_diskgroup_stat where exists (select 1 from v$datafile where name like '+%')"
-ignorezeroresult = true
-
-[[oracle-monitor.mgroup.metric]]
-context = "diskgroup_size"
-labels = [ "inst_id", "node_name" , "instance_name", "diskgroup_name" ]
-metrics_desc = { total = "Total size of ASM disk group in MB.", free = "Free space available on ASM disk group in MB." }
-metrics_type = { total = 'integer', free='integer'}
+# RedoLog
+context = "datafile"
+metrics_desc = { value="Current number of datafile." }
+metrics_type = { datafile_num='integer'}
 request = '''
-SELECT instance_number            AS inst_id,
-       host_name                  AS node_name,
-       instance_name,
-       name                       AS diskgroup_name,
-       total_mb * 1024 * 1024     AS total,
-       free_mb * 1024 * 1024      AS free
-  FROM v$asm_diskgroup_stat, v$instance
-'''
-ignorezeroresult = true
-
-[[oracle-monitor.mgroup.metric]]
-context = "asmuptime"
-labels = [ "inst_id", "node_name", "instance_name"]
-metrics_desc = { uptime = "ASM uptime" }
-netrics_type = { uptime = 'integer'}
-request = '''
-SELECT instance_number                      AS inst_id,
-       host_name                            AS node_name,
-       instance_name,
-       (SYSDATE - startup_time) * 86400     AS uptime
-  FROM v$instance
+SELECT
+    COUNT(*) as datafile_num
+FROM
+    V$DATAFILE
 '''
 
 [[oracle-monitor.mgroup.metric]]
-context = "asm_dg_stat"
-labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name" ]
-metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
-metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", bytes_written = "counter", iops = "counter" }
+# Tablespaces
+context = "tablespace"
+labels = [ "tablespace_name", "contents" ]
+metrics_desc = { value="statistics usage for each tablespace" }
+metrics_type = { file_bytes = 'integer', max_bytes = 'integer', free_bytes='integer',used_bytes='integer',used_pct_max='float',use_file_pct='float',status='integer'}
 request = '''
- SELECT i.instance_number              AS inst_id,
-        i.host_name                    AS node_name,
-        i.instance_name,
-        g.name                         AS diskgroup_name,
-        SUM (ds.reads)                 AS reads,
-        SUM (ds.writes)                AS writes,
-        SUM (ds.bytes_read)            AS bytes_read,
-        SUM (ds.bytes_written)         AS bytes_written,
-        SUM (ds.reads + ds.writes)     AS iops
-   FROM v$asm_disk_stat ds, v$asm_diskgroup_stat g, v$instance i
-  WHERE ds.mount_status = 'CACHED' AND ds.group_number = g.group_number
-GROUP BY i.instance_number,
-        i.host_name,
-        i.instance_name,
-        g.name
+SELECT
+    df.TABLESPACE_NAME AS TABLESPACE_NAME,
+    df.CONTENTS AS CONTENTS,
+    NVL(SUM(df.BYTES), 0) AS FILE_BYTES,
+    NVL(SUM(df.MAX_BYTES), 0) AS MAX_BYTES,
+    NVL(SUM(f.FREE), 0) AS FREE_BYTES,
+    SUM(df.BYTES)-SUM(f.FREE) AS USED_BYTES,
+    ROUND(DECODE(SUM(df.MAX_BYTES), 0, 0, (SUM(df.BYTES) / SUM(df.MAX_BYTES) * 100)), 2) AS USED_PCT_MAX,
+    ROUND(DECODE(SUM(df.BYTES), 0, 0, (SUM(df.BYTES)-SUM(f.FREE)) / SUM(df.BYTES)* 100), 2) AS USED_FILE_PCT,
+    DECODE(df.STATUS, 'ONLINE', 1, 'OFFLINE', 2, 'READ ONLY', 3, 0) AS STATUS
+FROM
+    (
+    SELECT
+        ddf.FILE_ID,
+        dt.CONTENTS,
+        dt.STATUS,
+        ddf.FILE_NAME,
+        ddf.TABLESPACE_NAME,
+        TRUNC(ddf.BYTES) AS BYTES,
+        TRUNC(GREATEST(ddf.BYTES, ddf.MAXBYTES)) AS MAX_BYTES
+    FROM
+        DBA_DATA_FILES ddf,
+        DBA_TABLESPACES dt
+    WHERE
+        ddf.TABLESPACE_NAME = dt.TABLESPACE_NAME
+    ) df,
+    (
+    SELECT
+        TRUNC(SUM(BYTES)) AS FREE,
+        FILE_ID
+    FROM
+        DBA_FREE_SPACE
+    GROUP BY
+        FILE_ID
+    ) f
+WHERE
+    df.FILE_ID = f.FILE_ID (+)
+GROUP BY
+    df.TABLESPACE_NAME, df.CONTENTS, df.STATUS
+UNION ALL
+SELECT
+    Y.NAME AS TABLESPACE_NAME,
+    Y.CONTENTS AS CONTENTS,
+    NVL(SUM(Y.BYTES), 0) AS FILE_BYTES,
+    NVL(SUM(Y.MAX_BYTES), 0) AS MAX_BYTES,
+    NVL(MAX(NVL(Y.FREE_BYTES, 0)), 0) AS FREE,
+    SUM(Y.BYTES)-MAX(Y.FREE_BYTES) AS USED_BYTES,
+    ROUND(DECODE(SUM(Y.MAX_BYTES), 0, 0, (SUM(Y.BYTES) / SUM(Y.MAX_BYTES) * 100)), 2) AS USED_PCT_MAX,
+    ROUND(DECODE(SUM(Y.BYTES), 0, 0, (SUM(Y.BYTES)-MAX(Y.FREE_BYTES)) / SUM(Y.BYTES)* 100), 2) AS USED_FILE_PCT,
+    DECODE(Y.TBS_STATUS, 'ONLINE', 1, 'OFFLINE', 2, 'READ ONLY', 3, 0) AS STATUS
+FROM
+    (
+    SELECT
+        dtf.TABLESPACE_NAME AS NAME,
+        dt.CONTENTS,
+        dt.STATUS AS TBS_STATUS,
+        dtf.STATUS AS STATUS,
+        dtf.BYTES AS BYTES,
+        (
+        SELECT
+            ((f.TOTAL_BLOCKS - s.TOT_USED_BLOCKS) * vp.VALUE)
+        FROM
+            (
+            SELECT
+                TABLESPACE_NAME, SUM(USED_BLOCKS) TOT_USED_BLOCKS
+            FROM
+                GV$SORT_SEGMENT
+            WHERE
+                TABLESPACE_NAME != 'DUMMY'
+            GROUP BY
+                TABLESPACE_NAME) s, (
+            SELECT
+                TABLESPACE_NAME, SUM(BLOCKS) TOTAL_BLOCKS
+            FROM
+                DBA_TEMP_FILES
+            WHERE
+                TABLESPACE_NAME != 'DUMMY'
+            GROUP BY
+                TABLESPACE_NAME) f, (
+            SELECT
+                VALUE
+            FROM
+                V$PARAMETER
+            WHERE
+                NAME = 'db_block_size') vp
+        WHERE
+            f.TABLESPACE_NAME = s.TABLESPACE_NAME
+            AND f.TABLESPACE_NAME = dtf.TABLESPACE_NAME
+        ) AS FREE_BYTES,
+        CASE
+            WHEN dtf.MAXBYTES = 0 THEN dtf.BYTES
+            ELSE dtf.MAXBYTES
+        END AS MAX_BYTES
+    FROM
+        sys.DBA_TEMP_FILES dtf,
+        sys.DBA_TABLESPACES dt
+    WHERE
+        dtf.TABLESPACE_NAME = dt.TABLESPACE_NAME ) Y
+GROUP BY
+    Y.NAME, Y.CONTENTS, Y.TBS_STATUS
 '''
 
 [[oracle-monitor.mgroup.metric]]
-context = "asm_disk_stat"
-labels = [ "inst_id", "node_name", "instance_name", "diskgroup_name", "disk_number", "failgroup", "path" ]
-metrics_desc = { reads = "Total number of I/O read requests for the DG.", writes = "Total number of I/O write requests for the DG.", read_time = "Total I/O time (in hundreths of a second) for read requests for the disk", write_time = "Total I/O time (in hundreths of a second) for write requests for the disk", bytes_read = "Total number of bytes read from the DG", bytes_written = "Total number of bytes written from the DG", iops = "Total number of I/O requests for the DG" }
-metrics_type = { reads = "counter", writes = "counter", bytes_read = "counter", read_time = "counter", write_time = "counter", bytes_written = "counter", iops = "counter" }
+# ASM Disk Groups
+context = "asm_dg"
+labels = [ "dg_name"]
+metrics_desc = { value="statistics usage for each ASM DiskGroup" }
+metrics_type = { total_bytes = 'integer',  free_bytes='integer',used_pct='float'}
 request = '''
-  SELECT i.instance_number                         AS inst_id,
-         i.host_name                               AS node_name,
-         i.instance_name,
-         g.name                                    AS diskgroup_name,
-         ds.disk_number                            AS disk_number,
-         ds.failgroup                              AS failgroup,
-         ds.reads                                  AS reads,
-         ds.writes                                 AS writes,
-         ds.read_time * 1000                       AS read_time,
-         ds.write_time * 1000                      AS write_time,
-         ds.bytes_read                             AS bytes_read,
-         ds.bytes_written                          AS bytes_written,
-         REGEXP_REPLACE (ds.PATH, '.*/\', '\')     AS PATH,
-         ds.reads + ds.writes                      AS iops  
-    FROM v$asm_disk_stat ds, v$asm_diskgroup_stat g, v$instance i
-   WHERE ds.mount_status = 'CACHED' AND ds.group_number = g.group_number
-'''
-
-[[oracle-monitor.mgroup.metric]]
-context = "asm_space_consumers"
-labels = [ "inst_id", "diskgroup_name", "node_name", "instance_name", "sid", "file_type" ]
-metrics_desc = { size_mb = "Total space usage by db by file_type" , files = "Number of files by db by type" }
-metrics_type = { size_mb = 'integer', files ='integer'}
-request = '''
-  SELECT i.instance_number                     AS inst_id,
-         i.host_name                           AS node_name,
-         i.instance_name,
-         gname                                 AS diskgroup_name,
-         dbname                                AS sid,
-         file_type,
-         ROUND (SUM (space) / 1024 / 1024)     size_mb,
-         COUNT (*)                             AS files
-    FROM v$instance i,
-         (SELECT gname,
-                 REGEXP_SUBSTR (full_alias_path,
-                                '[[:alnum:]_]*',
-                                1,
-                                4)    dbname,
-                 file_type,
-                 space,
-                 aname,
-                 system_created,
-                 alias_directory
-            FROM (    SELECT CONCAT ('+' || gname,
-                                     SYS_CONNECT_BY_PATH (aname, '/'))
-                                 full_alias_path,
-                             system_created,
-                             alias_directory,
-                             file_type,
-                             space,
-                             LEVEL,
-                             gname,
-                             aname
-                        FROM (SELECT b.name                gname,
-                                     a.parent_index        pindex,
-                                     a.name                aname,
-                                     a.reference_index     rindex,
-                                     a.system_created,
-                                     a.alias_directory,
-                                     c.TYPE                file_type,
-                                     c.space
-                                FROM v$asm_alias a, v$asm_diskgroup b, v$asm_file c
-                               WHERE     a.group_number = b.group_number
-                                     AND a.group_number = c.group_number(+)
-                                     AND a.file_number = c.file_number(+)
-                                     AND a.file_incarnation = c.incarnation(+))
-                  START WITH     (MOD (pindex, POWER (2, 24))) = 0
-                             AND rindex IN
-                                     (SELECT a.reference_index
-                                        FROM v$asm_alias a, v$asm_diskgroup b
-                                       WHERE     a.group_number =
-                                                 b.group_number
-                                             AND (MOD (a.parent_index,
-                                                       POWER (2, 24))) =
-                                                 0)
-                  CONNECT BY PRIOR rindex = pindex)
-           WHERE NOT file_type IS NULL AND system_created = 'Y')
-GROUP BY i.instance_number,
-         i.host_name,
-         i.instance_name,
-         gname,
-         dbname,
-         file_type
+SELECT
+   NAME as DG_NAME,
+   ROUND(TOTAL_MB / DECODE(TYPE, 'EXTERN', 1, 'NORMAL', 2, 'HIGH', 3) * 1024 * 1024) as TOTAL_BYTES,
+   ROUND(USABLE_FILE_MB * 1024 * 1024) as FREE_BYTES,
+   ROUND(100 - (USABLE_FILE_MB / (TOTAL_MB / 
+                    DECODE(TYPE, 'EXTERN', 1, 'NORMAL', 2, 'HIGH', 3))) * 100, 2) as USED_PCT
+ FROM 
+    V$ASM_DISKGROUP
 '''
 
 [[oracle-monitor.mgroup]]
 
 name ="CustomMetrics"
-query_period = "5m"
-query_timeout = "5s"
+query_period = "1h"
+query_timeout = "10m"
 
 [[oracle-monitor.mgroup.metric]]
-context = "slow_queries"
+context = "query_stats"
 metrics_desc = { p95_time_usecs= "Gauge metric with percentile 95 of elapsed time.", p99_time_usecs= "Gauge metric with percentile 99 of elapsed time." }
-metrics_type = { p95_time_usecs='float', p99_time_usecs='float'}
-request = "select  percentile_disc(0.95)  within group (order by elapsed_time) as p95_time_usecs, percentile_disc(0.99)  within group (order by elapsed_time) as p99_time_usecs from v$sql where last_active_time >= sysdate - 5/(24*60)"
+metrics_type = { elapsed_time_avg='float', elapsed_time_p95='float', elapsed_time_p99='float',rows_processed_avg='integer', rows_processed_p95='integer', rows_processed_p99='integer'}
+request = '''
+SELECT parsing_schema_name,
+    round(avg(elapsed_time)/1000000,6) as elapsed_time_avg,
+    round(avg(ROWS_PROCESSED)) as rows_processed_avg,
+    ROUND(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY elapsed_time/1000000),6) elapsed_time_p95,
+    ROUND(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) row_processed_p95,
+    ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY elapsed_time/1000000),6) elapsed_time_p99,
+    ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) row_processed_p99
+FROM v$sql
+where last_active_time >= SYSDATE - INTERVAL '1' HOUR
+GROUP BY parsing_schema_name
+ORDER BY parsing_schema_name;
+'''
 
-[[oracle-monitor.mgroup.metric]]
-context = "big_queries"
-metrics_desc = { p95_rows= "Gauge metric with percentile 95 of returned rows.", p99_rows= "Gauge metric with percentile 99 of returned rows." }
-metrics_type = { p95_rows= 'integer', p99_rows='integer'}
-request = "select  percentile_disc(0.95)  within group (order by rownum) as p95_rows, percentile_disc(0.99)  within group (order by rownum) as p99_rows from v$sql where last_active_time >= sysdate - 5/(24*60)"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_user_segments_top100"
-metrics_desc = {table_bytes="Gauge metric with the size of the tables in user segments."}
-metrics_type = {table_bytes='integer'}
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as table_bytes from user_segments where segment_type='TABLE' group by segment_name) order by table_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_user_segments_top100"
-metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in user segments."}
-metrics_type = {table_partition_bytes="integer"}
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as table_partition_bytes from user_segments where segment_type='TABLE PARTITION' group by segment_name) order by table_partition_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_user_segments_top100"
-metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in user segments."}
-metrics_type = {cluster_bytes='integer'}
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as cluster_bytes from user_segments where segment_type='CLUSTER' group by segment_name) order by cluster_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_dba_segments_top100"
-metrics_desc = {table_bytes="Gauge metric with the size of the tables in dba segments."}
-metrics_type = {table_bytes='integer'}
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as table_bytes from dba_segments where segment_type='TABLE' group by segment_name) order by table_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_dba_segments_top100"
-metrics_desc = {table_partition_bytes="Gauge metric with the size of the table partition in dba segments."}
-metrics_type = {table_partition_bytes='integer' }
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as table_partition_bytes from dba_segments where segment_type='TABLE PARTITION' group by segment_name) order by table_partition_bytes DESC FETCH NEXT 100 ROWS ONLY"
-
-[[oracle-monitor.mgroup.metric]]
-context = "size_dba_segments_top100"
-metrics_desc = {cluster_bytes="Gauge metric with the size of the cluster in dba segments."}
-metrics_type = {cluster_bytes='integer'}
-labels = ["segment_name"]
-request = "select * from (select segment_name,sum(bytes) as cluster_bytes from dba_segments where segment_type='CLUSTER' group by segment_name) order by cluster_bytes DESC FETCH NEXT 100 ROWS ONLY"

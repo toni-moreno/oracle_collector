@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bufio"
+	"fmt"
+	"os"
 	"time"
 )
 
@@ -22,14 +25,15 @@ type DinamicParams struct {
 }
 
 type DiscoveryConfig struct {
-	OracleDiscoveryInterval time.Duration     `toml:"oracle_discovery_interval"`
-	OracleDiscoverySidRegex string            `toml:"oracle_discovery_sid_regex"`
-	OracleConnectUser       string            `toml:"oracle_connect_user"`
-	OracleConnectPass       string            `toml:"oracle_connect_pass"`
-	OracleConnectDSN        string            `toml:"oracle_connect_dsn"`
-	ExtraLabels             map[string]string `toml:"extra_labels"`
-	OracleLogLevel          string            `toml:"oracle_log_level"`
-	DynamicParamsBySID      []*DinamicParams  `toml:"dynamic-params"`
+	OracleClusterwareEnabled bool              `toml:"oracle_clusterware_enabled"`
+	OracleDiscoveryInterval  time.Duration     `toml:"oracle_discovery_interval"`
+	OracleDiscoverySidRegex  string            `toml:"oracle_discovery_sid_regex"`
+	OracleConnectUser        string            `toml:"oracle_connect_user"`
+	OracleConnectPass        string            `toml:"oracle_connect_pass"`
+	OracleConnectDSN         string            `toml:"oracle_connect_dsn"`
+	ExtraLabels              map[string]string `toml:"extra_labels"`
+	OracleLogLevel           string            `toml:"oracle_log_level"`
+	DynamicParamsBySID       []*DinamicParams  `toml:"dynamic-params"`
 }
 
 type OutputConfig struct {
@@ -70,6 +74,19 @@ type OracleMonitorConfig struct {
 	DefaultQueryTimeout time.Duration              `toml:"default_query_timeout"`
 	DefaultQueryPeriod  time.Duration              `toml:"default_query_period"`
 	MetricGroup         []*OracleMetricGroupConfig `toml:"mgroup"`
+}
+
+func (om *OracleMonitorConfig) Resume(f *os.File) {
+	w := bufio.NewWriter(f)
+	w.WriteString("**==========================================================================================\n")
+	for _, mgc := range om.MetricGroup {
+		for _, mc := range mgc.OracleMetrics {
+			s := fmt.Sprintf("** GROUP: %s [Period:%s|Timeout:%s ]  METRIC_CONTEXT: %s\n", mgc.Name, mgc.QueryPeriod, mgc.QueryTimeout, mc.Context)
+			w.WriteString(s)
+		}
+	}
+	w.WriteString("**==========================================================================================\n")
+	w.Flush()
 }
 
 // Config Main Configuration struct

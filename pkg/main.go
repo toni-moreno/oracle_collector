@@ -135,6 +135,9 @@ func init() {
 
 	log.Debugf("Loaded Config  :%+v", cfg)
 	log.Infof("Set Default directories : \n   - Exec: %s\n   - Config: %s\n   -Logs: %s\n", appdir, confDir, logDir)
+
+	// Check Monitor Config
+	cfg.OraMon.Resume(file)
 }
 
 func main() {
