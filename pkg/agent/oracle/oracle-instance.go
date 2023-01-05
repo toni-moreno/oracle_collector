@@ -269,6 +269,7 @@ func (oi *OracleInstance) UpdateInfo() error {
 	log.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
 	// Initialice PDB's info.
 	log.Infof("[DISCOVERY] Initialize/Update PDB Info...")
+	oi.DBInfo.PDBs = nil
 	query = "select CON_ID,NAME,OPEN_MODE from v$pdbs"
 	rows_pdb, err := oi.conn.QueryContext(ctx, query)
 	if err != nil {
