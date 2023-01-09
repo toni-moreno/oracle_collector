@@ -64,8 +64,12 @@ type DatabaseInfo struct {
 type OracleInstance struct {
 	DiscoveredSid string
 	// Instance Info
+
 	InstInfo InstanceInfo
 	DBInfo   DatabaseInfo
+
+	ClusteWareEnabled bool
+	IsValidForDBQuery bool
 
 	AlertLogFile string
 	ListenerIP   string
@@ -86,6 +90,12 @@ func (oi *OracleInstance) GetExtraLabels() map[string]string {
 	oi.cmutex.Lock()
 	defer oi.cmutex.Unlock()
 	return oi.labels
+}
+
+func (oi *OracleInstance) GetIsValidForDBQuery() bool {
+	oi.cmutex.Lock()
+	defer oi.cmutex.Unlock()
+	return oi.IsValidForDBQuery
 }
 
 func (oi *OracleInstance) initExtraLabels() map[string]string {
@@ -178,7 +188,7 @@ func (oi *OracleInstance) UpdateInfo() error {
 		INSTANCE_NUMBER,
 		INSTANCE_NAME,
 		HOST_NAME,
-		VERSION,
+		VERSION_FULL as VERSION,
 		STARTUP_TIME,
 		FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
 		STATUS,
@@ -226,9 +236,13 @@ func (oi *OracleInstance) UpdateInfo() error {
 	}
 	log.Debugf("[DISCOVERY] Instance Rows:%d", rowsCount)
 
-	// Initialize DB Data Only if instance in OPEN mode.
-
-	if oi.InstInfo.Status != "OPEN" {
+	// https://www.oracletutorial.com/oracle-administration/oracle-startup/
+	// ------------------------------------------------
+	// NOMOUNT => INST ( STARTED ) => DB  (N.A)
+	// MOUNT => INST(MOUNTED)=> DB MOUNTED
+	// OPEN => INTT(OPEN) => DB READ WRITE
+	// Initialize DB Data Only if instance not in STARTED mode.
+	if oi.InstInfo.Status == "STARTED" {
 		return nil
 	}
 	log.Infof("[DISCOVERY] Initialize/Update Database Info...")
@@ -267,6 +281,32 @@ func (oi *OracleInstance) UpdateInfo() error {
 		rowsCount += 1
 	}
 	log.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
+	// Check if this instance will be useful for DB level queries
+	// if ClusterWare Mode Enabled
+	if oi.ClusteWareEnabled {
+		query = `SELECT MIN(INSTANCE_NUMBER) AS MIN FROM GV$INSTANCE`
+		rows_db, err := oi.conn.QueryContext(ctx, query)
+		if err != nil {
+			log.Warnf("[DISCOVERY] Error in database Query:%s", err)
+			return err
+		}
+		defer rows_db.Close()
+		var min int
+		rowsCount = 0
+		for rows_db.Next() {
+			err = rows_db.Scan(&min)
+			if err != nil {
+				return err
+			}
+			rowsCount += 1
+		}
+		log.Debugf("[DISCOVERY] Cluster Rows:%d (MIN: %d)", rowsCount, min)
+		if oi.InstInfo.InstNumber == min {
+			log.Debugf("This instance %s[%d] is the lowest instance => Is Valid for DB Queries ", oi.InstInfo.InstName, oi.InstInfo.InstNumber)
+			oi.IsValidForDBQuery = true
+		}
+	}
+
 	// Initialice PDB's info.
 	log.Infof("[DISCOVERY] Initialize/Update PDB Info...")
 	oi.DBInfo.PDBs = nil
@@ -305,8 +345,10 @@ func (oi *OracleInstance) UpdateInfo() error {
 	return nil
 }
 
-func (oi *OracleInstance) Init(loglevel string) error {
+func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 	var err error
+
+	oi.ClusteWareEnabled = ClusterwareEnabled
 
 	oi.log = CreateLoggerForSid(oi.DiscoveredSid, loglevel)
 

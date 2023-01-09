@@ -23,6 +23,8 @@ flush_period = "10s"
 
 [oracle-discovery]
 
+oracle_clusterware_enabled = true 
+
 oracle_discovery_interval = "1m"
 oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
@@ -87,6 +89,7 @@ default_query_timeout = "10s"
 [[oracle-monitor.mgroup]]
 
 name ="BaseMetrics_1m_DB"
+query_level = "db"
 query_period = "60s"
 query_timeout = "5s"
 
@@ -550,6 +553,7 @@ SELECT REPLACE(LOWER(METRIC_NAME),' ','_') AS metric, VALUE
 [[oracle-monitor.mgroup]]
 
 name ="BaseMetrics_1h_DB"
+query_level = "db"
 query_period = "1h"
 query_timeout = "30m"
 

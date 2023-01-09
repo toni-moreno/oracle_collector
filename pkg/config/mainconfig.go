@@ -62,12 +62,22 @@ type OracleMetricConfig struct {
 	// MetricsBuckets   map[string]map[string]string
 }
 
+type QueyType uint
+
 type OracleMetricGroupConfig struct {
+	QueryLevel     string               `toml:"query_level"` // db/inst
 	QueryPeriod    time.Duration        `toml:"query_period"`
 	QueryTimeout   time.Duration        `toml:"query_timeout"`
 	Name           string               `toml:"name"`
 	InstanceFilter string               `toml:"instance_filter"`
 	OracleMetrics  []OracleMetricConfig `toml:"metric"`
+}
+
+func (omgc *OracleMetricGroupConfig) GetQueryLevel() string {
+	if len(omgc.QueryLevel) > 0 {
+		return omgc.QueryLevel
+	}
+	return "instance"
 }
 
 type OracleMonitorConfig struct {
@@ -81,7 +91,7 @@ func (om *OracleMonitorConfig) Resume(f *os.File) {
 	w.WriteString("**==========================================================================================\n")
 	for _, mgc := range om.MetricGroup {
 		for _, mc := range mgc.OracleMetrics {
-			s := fmt.Sprintf("** GROUP: %s [Period:%s|Timeout:%s ]  METRIC_CONTEXT: %s\n", mgc.Name, mgc.QueryPeriod, mgc.QueryTimeout, mc.Context)
+			s := fmt.Sprintf("** GROUP: %s [Level:%s] [Period:%s|Timeout:%s ]  METRIC_CONTEXT: %s\n", mgc.Name, mgc.GetQueryLevel(), mgc.QueryPeriod, mgc.QueryTimeout, mc.Context)
 			w.WriteString(s)
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/toni-moreno/oracle_collector/pkg/agent/data"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/oracle"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/selfmon"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -53,6 +54,11 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 
 	log.Infof("[COLLECTOR] Processor [%s] new Iteration on [%d] Instances [%+v]", mgp.cfg.Name, n, mgp.InstNames)
 	for _, i := range mgp.OracleInstances {
+		// check if this instance should be queried
+		if mgp.cfg.GetQueryLevel() == "db" && !i.GetIsValidForDBQuery() {
+			mgp.Infof(i, "QUERY IN DB MODE: SKIP querying instance %s : not smalest Instance in DB (Current %d)", i.InstInfo.InstName, i.InstInfo.InstNumber)
+			continue
+		}
 		extraLabels := i.GetExtraLabels()
 		for _, q := range mgp.cfg.OracleMetrics {
 			mgp.Debugf(i, "Begin Metric Query: [%s]", q.Context)
@@ -70,6 +76,7 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 				continue
 			}
 			output.SendMetrics(metrics)
+			selfmon.SendQueryStat(extraLabels, mgp.cfg, &q, n, d)
 		}
 	}
 }

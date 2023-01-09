@@ -160,3 +160,23 @@ func startSelfmonCollector() {
 		}
 	}
 }
+
+func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupConfig, mc *config.OracleMetricConfig, n int, t time.Duration) {
+	result := []telegraf.Metric{}
+
+	tags := make(map[string]string)
+	// first added extra tags
+	for k, v := range extraLabels {
+		tags[k] = v
+	}
+
+	tags["metric_group"] = mgc.Name
+	tags["metric_context"] = mc.Context
+	fields := make(map[string]interface{})
+	fields["num_metrics"] = n
+	fields["duration_us"] = t.Microseconds()
+	now := time.Now()
+	m := metric.New("collect_stats", tags, fields, now)
+	result = append(result, m)
+	output.SendMetrics(result)
+}
