@@ -11,7 +11,11 @@ log_level = "debug"
 
 enabled = true
 request_period = "30s"
-measurement_prefix = "go_rt_"
+#Measurement names will be
+# prefix + "runtime" + "XXX" ( for Go Runtime Stats)
+# prefix + "collect_stats" ( for Query Stats )
+measurement_prefix = "oc_"
+# labels/tags for self-monitoring will be contatenated/overwritted to the discovery extra_labels
 extra_labels = {ifx_db="oraclecol",group="Exadata",release="Legacy"}
 
 

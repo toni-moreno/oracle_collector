@@ -97,7 +97,7 @@ func collectRuntimeData() (int, error) {
 	for _, sample := range samples {
 		// Pull out the name and value.
 
-		meas_name := strings.ReplaceAll(utils.TrimLeftChar(filepath.Dir(sample.Name)), "/", "_")
+		meas_name := "runtime_" + strings.ReplaceAll(utils.TrimLeftChar(filepath.Dir(sample.Name)), "/", "_")
 		if len(conf.Prefix) > 0 {
 			meas_name = conf.Prefix + meas_name
 		}
@@ -165,8 +165,12 @@ func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupC
 	result := []telegraf.Metric{}
 
 	tags := make(map[string]string)
-	// first added extra tags
+	// first added General extra tags from
 	for k, v := range extraLabels {
+		tags[k] = v
+	}
+	// and then added Extra tags from sefl-monitor config
+	for k, v := range conf.ExtraLabels {
 		tags[k] = v
 	}
 
@@ -176,7 +180,11 @@ func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupC
 	fields["num_metrics"] = n
 	fields["duration_us"] = t.Microseconds()
 	now := time.Now()
-	m := metric.New("collect_stats", tags, fields, now)
+	meas_name := "collect_stats"
+	if len(conf.Prefix) > 0 {
+		meas_name = conf.Prefix + meas_name
+	}
+	m := metric.New(meas_name, tags, fields, now)
 	result = append(result, m)
 	output.SendMetrics(result)
 }
