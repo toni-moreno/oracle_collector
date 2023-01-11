@@ -38,19 +38,19 @@ func discover(cfg *config.DiscoveryConfig) {
 	}
 	log.Debugf("[DISCOVERY] Found [%d] Oracle Intances [%+v]", len(oinstances), GetSidNames(oinstances))
 	new, old, same := OraList.GetNewAndOldInstances(oinstances)
-	log.Debugf("[DISCOVERY] New Instances Fournd [%d]: %+v", len(new), GetSidNames(new))
+	log.Debugf("[DISCOVERY] New Instances Found [%d]: %+v", len(new), GetSidNames(new))
 	for _, inst := range new {
 		inst.cfg = cfg
 		log.Infof("[DISCOVERY] New Instance found: %s", inst.DiscoveredSid)
 		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled)
 		if err != nil {
 			log.Errorf("Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
-			break
+			continue
 		}
 		OraList.Add(inst)
 		output.SendMetrics(inst.StatusMetrics(true))
 	}
-	log.Debugf("[DISCOVERY] Old Instances Fournd [%d]: %+v", len(old), GetSidNames(old))
+	log.Debugf("[DISCOVERY] Old Instances Found [%d]: %+v", len(old), GetSidNames(old))
 	for _, inst := range old {
 		log.Infof("[DISCOVERY] Instance %s is LOST", inst.DiscoveredSid)
 		err := inst.End()
@@ -61,7 +61,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		OraList.Delete(inst)
 		output.SendMetrics(inst.StatusMetrics(false))
 	}
-	log.Debugf("[DISCOVERY] Same Instances Fournd [%d]: %+v", len(same), GetSidNames(same))
+	log.Debugf("[DISCOVERY] Same Instances Found [%d]: %+v", len(same), GetSidNames(same))
 	// for all other instances should update status and send metrics.
 
 	for _, inst := range same {
