@@ -392,7 +392,7 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 	if err != nil {
 		log.Warnf("[DISCOVERY] Can't create connection: %s ", err)
 		oi.Unlock()
-		return err
+		return fmt.Errorf("ConnectDNS: %s: ERR: %s", dsn, err)
 	}
 	log.Tracef("[DISCOVERY] Connection String: %s", connStr)
 	oi.conn.SetConnMaxLifetime(0)
@@ -404,12 +404,12 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 	err = oi.conn.PingContext(ctx)
 	if ctx.Err() == context.DeadlineExceeded {
 		oi.Unlock()
-		return errors.New("Oracle Ping timed out")
+		return fmt.Errorf("ConnectDNS: %s: Oracle Ping timed out")
 	}
 	if err != nil {
 		log.Warnf("[DISCOVERY] Can't ping connection: %s ", err)
 		oi.Unlock()
-		return err
+		return fmt.Errorf("ConnectDNS: %s: ERR: %s", dsn, err)
 	}
 	oi.Unlock()
 	return oi.UpdateInfo()

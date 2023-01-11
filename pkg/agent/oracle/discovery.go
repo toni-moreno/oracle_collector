@@ -44,7 +44,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		log.Infof("[DISCOVERY] New Instance found: %s", inst.DiscoveredSid)
 		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled)
 		if err != nil {
-			log.Errorf("Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
+			log.Errorf("[DISCOVERY] Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
 			continue
 		}
 		OraList.Add(inst)
