@@ -62,6 +62,7 @@ type DatabaseInfo struct {
 }
 
 type OracleInstance struct {
+	sync.Mutex
 	DiscoveredSid string
 	// Instance Info
 
@@ -78,7 +79,6 @@ type OracleInstance struct {
 	cfg          *config.DiscoveryConfig
 	conn         *sql.DB
 	log          *logrus.Logger
-	cmutex       sync.Mutex
 	labels       map[string]string
 }
 
@@ -87,15 +87,21 @@ func (oi *OracleInstance) String() string {
 }
 
 func (oi *OracleInstance) GetExtraLabels() map[string]string {
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
+	oi.Lock()
+	defer oi.Unlock()
 	return oi.labels
 }
 
 func (oi *OracleInstance) GetIsValidForDBQuery() bool {
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
+	oi.Lock()
+	defer oi.Unlock()
 	return oi.IsValidForDBQuery
+}
+
+func (oi *OracleInstance) GetInstanceName() string {
+	oi.Lock()
+	defer oi.Unlock()
+	return oi.InstInfo.InstName
 }
 
 func (oi *OracleInstance) initExtraLabels() map[string]string {
@@ -134,8 +140,8 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	start := time.Now()
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
+	oi.Lock()
+	defer oi.Unlock()
 	rows, err := oi.conn.QueryContext(ctx, query) // DATA RACE FOUND
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, 0, errors.New("Oracle query timed out")
@@ -178,8 +184,8 @@ func CreateLoggerForSid(sid string, loglevel string) *logrus.Logger {
 }
 
 func (oi *OracleInstance) UpdateInfo() error {
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
+	oi.Lock()
+	defer oi.Unlock()
 	// Initialize instance Data.
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
 	log.Infof("[DISCOVERY] Initialize/Update Instance Info...")
@@ -381,11 +387,11 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 
 	dsn := strings.ReplaceAll(ConnectDSN, "SID", oi.DiscoveredSid)
 	connStr := "oracle://" + url.QueryEscape(ConnectUser) + ":" + url.QueryEscape(ConnectPass) + "@" + dsn
-	oi.cmutex.Lock()
+	oi.Lock()
 	oi.conn, err = sql.Open("godror", connStr)
 	if err != nil {
 		log.Warnf("[DISCOVERY] Can't create connection: %s ", err)
-		oi.cmutex.Unlock()
+		oi.Unlock()
 		return err
 	}
 	log.Tracef("[DISCOVERY] Connection String: %s", connStr)
@@ -397,21 +403,21 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 	// Connection Ping
 	err = oi.conn.PingContext(ctx)
 	if ctx.Err() == context.DeadlineExceeded {
-		oi.cmutex.Unlock()
+		oi.Unlock()
 		return errors.New("Oracle Ping timed out")
 	}
 	if err != nil {
 		log.Warnf("[DISCOVERY] Can't ping connection: %s ", err)
-		oi.cmutex.Unlock()
+		oi.Unlock()
 		return err
 	}
-	oi.cmutex.Unlock()
+	oi.Unlock()
 	return oi.UpdateInfo()
 }
 
 func (oi *OracleInstance) End() error {
-	oi.cmutex.Lock()
-	defer oi.cmutex.Unlock()
+	oi.Lock()
+	defer oi.Unlock()
 	err := oi.conn.Close()
 	if err != nil {
 		log.Errorf("[DISCOVERY] Error while closing oracle connection: %s:", err)

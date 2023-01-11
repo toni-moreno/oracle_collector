@@ -18,7 +18,6 @@ var (
 	log    *logrus.Logger
 	conf   *config.SelfMonConfig
 	chExit chan bool
-	// mutex  sync.Mutex
 )
 
 // SetLogger set log SELF_MON
@@ -116,7 +115,6 @@ func collectRuntimeData() (int, error) {
 	}
 
 	output.SendMetrics(sm)
-
 	return 0, nil
 }
 

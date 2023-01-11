@@ -17,10 +17,9 @@ var (
 	bufferSize  int
 	bachSize    int
 	flushPeriod time.Duration
-	// MetricBufChan chan *telegraf.Metric
-	chExit chan bool
-	buffer *models.Buffer
-	ser    serializers.Serializer
+	chExit      chan bool
+	buffer      *models.Buffer
+	ser         serializers.Serializer
 )
 
 // SetLogger sets the current log output.

@@ -37,7 +37,7 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 	} else {
 		filtered = instances
 		for _, i := range instances {
-			mgp.InstNames = append(mgp.InstNames, i.InstInfo.InstName)
+			mgp.InstNames = append(mgp.InstNames, i.GetInstanceName())
 		}
 	}
 	mgp.OracleInstances = filtered
