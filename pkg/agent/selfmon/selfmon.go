@@ -3,6 +3,7 @@ package selfmon
 import (
 	"path/filepath"
 	"runtime/metrics"
+	"sort"
 	"strings"
 	"time"
 
@@ -179,6 +180,37 @@ func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupC
 	fields["duration_us"] = t.Microseconds()
 	now := time.Now()
 	meas_name := "collect_stats"
+	if len(conf.Prefix) > 0 {
+		meas_name = conf.Prefix + meas_name
+	}
+	m := metric.New(meas_name, tags, fields, now)
+	result = append(result, m)
+	output.SendMetrics(result)
+}
+
+func SendDiscoveryMetrics(discovered_all int, new int, current_connected int, disconnected int, connect_error int, new_str []string, old_str []string, err_con_sids []string) {
+	result := []telegraf.Metric{}
+
+	tags := make(map[string]string)
+	// and then added Extra tags from sefl-monitor config
+	for k, v := range conf.ExtraLabels {
+		tags[k] = v
+	}
+
+	fields := make(map[string]interface{})
+	fields["all"] = discovered_all
+	fields["new"] = new
+	fields["current"] = current_connected
+	fields["disconnected"] = disconnected
+	fields["connect_errors"] = connect_error
+	sort.Strings(new_str)
+	sort.Strings(old_str)
+	sort.Strings(err_con_sids)
+	fields["disconnected_sid_names"] = strings.Join(old_str, ":")
+	fields["connected_sid_names"] = strings.Join(new_str, ":")
+	fields["errconnect_sid_names"] = strings.Join(new_str, ":")
+	now := time.Now()
+	meas_name := "discover_stats"
 	if len(conf.Prefix) > 0 {
 		meas_name = conf.Prefix + meas_name
 	}
