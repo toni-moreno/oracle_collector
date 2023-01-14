@@ -189,12 +189,13 @@ func (oi *OracleInstance) UpdateInfo() error {
 	// Initialize instance Data.
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
 	log.Infof("[DISCOVERY] Initialize/Update Instance Info...")
+	// VERSION_FULL as VERSION not working on 11.2.0.4
 	query := `
 	select 
 		INSTANCE_NUMBER,
 		INSTANCE_NAME,
 		HOST_NAME,
-		VERSION_FULL as VERSION,
+		VERSION,
 		STARTUP_TIME,
 		FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
 		STATUS,
