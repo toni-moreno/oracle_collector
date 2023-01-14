@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/constraints"
 )
 
 // WaitAlignForNextCycle waiths untile a next cycle begins aligned with second 00 of each minute
@@ -35,57 +36,46 @@ func RemoveDuplicatesUnordered(elements []string) []string {
 }
 
 // DiffSlice return de Difference between two Slices
-func SliceDiff(X, Y []string) []string {
-	diff := []string{}
-	vals := map[string]struct{}{}
+func SliceDiff(slice1 []string, slice2 []string) []string {
+	var diff []string
 
-	for _, x := range Y {
-		vals[x] = struct{}{}
-	}
-
-	for _, x := range X {
-		if _, ok := vals[x]; !ok {
-			diff = append(diff, x)
+	for _, s1 := range slice1 {
+		found := false
+		for _, s2 := range slice2 {
+			if s1 == s2 {
+				found = true
+				break
+			}
+		}
+		// String not found. We add it to return slice
+		if !found {
+			diff = append(diff, s1)
 		}
 	}
 
 	return diff
 }
 
-// https://stackoverflow.com/questions/44956031/how-to-get-intersection-of-two-slice-in-golang
-func SliceIntersect(a []string, b []string) (inter []string) {
-	// interacting on the smallest list first can potentailly be faster...but not by much, worse case is the same
-	low, high := a, b
-	if len(a) > len(b) {
-		low = b
-		high = a
-	}
-
-	done := false
-	for i, l := range low {
-		for j, h := range high {
-			// get future index values
-			f1 := i + 1
-			f2 := j + 1
-			if l == h {
-				inter = append(inter, h)
-				if f1 < len(low) && f2 < len(high) {
-					// if the future values aren't the same then that's the end of the intersection
-					if low[f1] != high[f2] {
-						done = true
+func SliceIntersect[T constraints.Ordered](pS ...[]T) []T {
+	hash := make(map[T]*int) // value, counter
+	result := make([]T, 0)
+	for _, slice := range pS {
+		duplicationHash := make(map[T]bool) // duplication checking for individual slice
+		for _, value := range slice {
+			if _, isDup := duplicationHash[value]; !isDup { // is not duplicated in slice
+				if counter := hash[value]; counter != nil { // is found in hash counter map
+					if *counter++; *counter >= len(pS) { // is found in every slice
+						result = append(result, value)
 					}
+				} else { // not found in hash counter map
+					i := 1
+					hash[value] = &i
 				}
-				// we don't want to interate on the entire list everytime, so remove the parts we already looped on will make it faster each pass
-				high = high[:j+copy(high[j:], high[j+1:])]
-				break
+				duplicationHash[value] = true
 			}
 		}
-		// nothing in the future so we are done
-		if done {
-			break
-		}
 	}
-	return
+	return result
 }
 
 func diffKeysInMap(X, Y map[string]string) map[string]string {

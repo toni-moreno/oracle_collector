@@ -1,6 +1,6 @@
 module github.com/toni-moreno/oracle_collector
 
-go 1.17
+go 1.19
 
 require (
 	github.com/BurntSushi/toml v1.2.1
@@ -36,6 +36,7 @@ require (
 	github.com/tklauser/numcpus v0.5.0 // indirect
 	github.com/wavefronthq/wavefront-sdk-go v0.10.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
+	golang.org/x/exp v0.0.0-20230113152452-c42ee1cf562e // indirect
 	golang.org/x/sys v0.1.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 )

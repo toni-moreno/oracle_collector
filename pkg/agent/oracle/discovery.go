@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/toni-moreno/oracle_collector/pkg/agent/output"
+	"github.com/toni-moreno/oracle_collector/pkg/agent/selfmon"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
@@ -36,14 +37,24 @@ func discover(cfg *config.DiscoveryConfig) {
 		log.Errorf("[DISCOVERY] Error on scan instances :%s", err)
 		return
 	}
-	log.Debugf("[DISCOVERY] Found [%d] Oracle Intances [%+v]", len(oinstances), GetSidNames(oinstances))
+	log.Debugf("[DISCOVERY] System: ===========================================")
+	log.Debugf("[DISCOVERY] System: Found [%d] Oracle Intances [%+v]", len(oinstances), GetSidNames(oinstances))
+	existing := OraList.GetList()
+	log.Debugf("[DISCOVERY] System: Existing [%d] Oracle Intances [%+v]", len(existing), GetSidNames(existing))
 	new, old, same := OraList.GetNewAndOldInstances(oinstances)
-	log.Debugf("[DISCOVERY] New Instances Found [%d]: %+v", len(new), GetSidNames(new))
+	log.Debugf("[DISCOVERY] System: New (Or not previously connected) Instances Found [%d]: %+v", len(new), GetSidNames(new))
+	log.Debugf("[DISCOVERY] System: Same Instances Found [%d]: %+v", len(same), GetSidNames(same))
+	log.Debugf("[DISCOVERY] System: Old Registered Instances Disappeared [%d]: %+v", len(old), GetSidNames(old))
+
+	errorConnect := 0
+	errorConnectSids := []string{}
 	for _, inst := range new {
 		inst.cfg = cfg
 		log.Infof("[DISCOVERY] New Instance found: %s", inst.DiscoveredSid)
 		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled)
 		if err != nil {
+			errorConnect++
+			errorConnectSids = append(errorConnectSids, inst.DiscoveredSid)
 			log.Errorf("[DISCOVERY] Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
 			continue
 		}
@@ -71,6 +82,8 @@ func discover(cfg *config.DiscoveryConfig) {
 		}
 		output.SendMetrics(inst.StatusMetrics(true))
 	}
+
+	selfmon.SendDiscoveryMetrics(len(oinstances), len(new), len(same), len(old), errorConnect, GetSidNames(new), GetSidNames(old), errorConnectSids)
 }
 
 func discoveryProcess(cfg *config.DiscoveryConfig, done chan bool) {
