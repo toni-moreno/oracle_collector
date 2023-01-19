@@ -1,6 +1,7 @@
 package selfmon
 
 import (
+	"database/sql"
 	"path/filepath"
 	"runtime/metrics"
 	"sort"
@@ -153,7 +154,7 @@ func startSelfmonCollector() {
 			if err != nil {
 				log.Infof("[SELF_MON] Flushed %d metrics: with error:%s", n, err)
 			} else {
-				log.Infof("[SELF_MON] Flushed %d metrics: without error", n)
+				log.Infof("[SELF_MON] Flushed %d metrics: OK", n)
 			}
 
 		}
@@ -211,6 +212,37 @@ func SendDiscoveryMetrics(discovered_all int, new int, current_connected int, di
 	fields["errconnect_sid_names"] = strings.Join(new_str, ":")
 	now := time.Now()
 	meas_name := "discover_stats"
+	if len(conf.Prefix) > 0 {
+		meas_name = conf.Prefix + meas_name
+	}
+	m := metric.New(meas_name, tags, fields, now)
+	result = append(result, m)
+	output.SendMetrics(result)
+}
+
+func SendSQLDriverStat(inst string, s sql.DBStats) {
+	result := []telegraf.Metric{}
+
+	tags := make(map[string]string)
+
+	// and then added Extra tags from sefl-monitor config
+	for k, v := range conf.ExtraLabels {
+		tags[k] = v
+	}
+
+	tags["instance"] = inst
+	fields := make(map[string]interface{})
+	fields["idle_conn"] = s.Idle
+	fields["inuse_conn"] = s.InUse
+	fields["max_idle_closed"] = s.MaxIdleClosed
+	fields["max_idle_time_closed"] = s.MaxIdleTimeClosed
+	fields["max_open_connections"] = s.MaxOpenConnections
+	fields["open_connections"] = s.OpenConnections
+	fields["wait_count"] = s.WaitCount
+	fields["wait_duration_ms"] = s.WaitDuration.Milliseconds()
+
+	now := time.Now()
+	meas_name := "sql_driver_stats"
 	if len(conf.Prefix) > 0 {
 		meas_name = conf.Prefix + meas_name
 	}

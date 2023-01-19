@@ -104,6 +104,12 @@ func (oi *OracleInstance) GetInstanceName() string {
 	return oi.InstInfo.InstName
 }
 
+func (oi *OracleInstance) GetDriverStats() sql.DBStats {
+	oi.Lock()
+	defer oi.Unlock()
+	return oi.conn.Stats()
+}
+
 func (oi *OracleInstance) initExtraLabels() map[string]string {
 	oi.labels = make(map[string]string)
 	// First fixed labels
@@ -140,8 +146,6 @@ func (oi *OracleInstance) Query(timeout time.Duration, query string, t *data.Dat
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	start := time.Now()
-	oi.Lock()
-	defer oi.Unlock()
 	rows, err := oi.conn.QueryContext(ctx, query) // DATA RACE FOUND
 	if ctx.Err() == context.DeadlineExceeded {
 		return 0, 0, errors.New("Oracle query timed out")
@@ -397,8 +401,8 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 	}
 	log.Tracef("[DISCOVERY] Connection String: %s", connStr)
 	oi.conn.SetConnMaxLifetime(0)
-	oi.conn.SetMaxIdleConns(3)
-	oi.conn.SetMaxOpenConns(3)
+	oi.conn.SetMaxIdleConns(10)
+	oi.conn.SetMaxOpenConns(10)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// Connection Ping

@@ -71,6 +71,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		}
 		OraList.Delete(inst)
 		output.SendMetrics(inst.StatusMetrics(false))
+		selfmon.SendSQLDriverStat(inst.GetInstanceName(), inst.GetDriverStats())
 	}
 	log.Debugf("[DISCOVERY] Same Instances Found [%d]: %+v", len(same), GetSidNames(same))
 	// for all other instances should update status and send metrics.
@@ -81,6 +82,7 @@ func discover(cfg *config.DiscoveryConfig) {
 			log.Errorf("[DISCOVERY] Error on Update Instance Info for [%s]: Err: %s", inst.DiscoveredSid, err)
 		}
 		output.SendMetrics(inst.StatusMetrics(true))
+		selfmon.SendSQLDriverStat(inst.GetInstanceName(), inst.GetDriverStats())
 	}
 
 	selfmon.SendDiscoveryMetrics(len(oinstances), len(new), len(same), len(old), errorConnect, GetSidNames(new), GetSidNames(old), errorConnectSids)
