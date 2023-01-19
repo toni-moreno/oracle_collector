@@ -701,9 +701,11 @@ SELECT
 
 [[oracle-monitor.mgroup]]
 
-name ="CustomMetrics"
+name ="CustomMetrics_1h_DB"
+query_level = "db"
 query_period = "1h"
 query_timeout = "10m"
+
 
 [[oracle-monitor.mgroup.metric]]
 context = "query_stats"
@@ -720,6 +722,6 @@ SELECT parsing_schema_name,
 FROM v$sql
 where last_active_time >= SYSDATE - INTERVAL '1' HOUR
 GROUP BY parsing_schema_name
-ORDER BY parsing_schema_name;
+ORDER BY parsing_schema_name
 '''
 
