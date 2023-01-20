@@ -3,6 +3,7 @@ package selfmon
 import (
 	"database/sql"
 	"path/filepath"
+	"runtime"
 	"runtime/metrics"
 	"sort"
 	"strings"
@@ -20,6 +21,10 @@ var (
 	log    *logrus.Logger
 	conf   *config.SelfMonConfig
 	chExit chan bool
+	// memory for GVM data colletion
+	lastSampleTime time.Time
+	lastPauseNs    uint64
+	lastNumGc      uint32
 )
 
 // SetLogger set log SELF_MON
@@ -30,6 +35,7 @@ func SetLogger(l *logrus.Logger) {
 func Init(cfg *config.SelfMonConfig) {
 	conf = cfg
 	chExit = make(chan bool)
+	lastSampleTime = time.Now()
 	log.Infof("[SELF_MON] Self Monitor Enabled  %t", conf.Enabled)
 	if conf.Enabled {
 		go startSelfmonCollector()
@@ -78,7 +84,7 @@ func telegrafFieldsFromRTSamples(samples []metrics.Sample) map[string]interface{
 	return fields
 }
 
-func collectRuntimeData() (int, error) {
+func collectRuntimeStats() (int, error) {
 	descs := metrics.All()
 
 	// Create a sample for each metric.
@@ -145,16 +151,32 @@ func startSelfmonCollector() {
 		select {
 		case <-chExit:
 			// need to flush all data
-			n, err := collectRuntimeData()
-			log.Infof("[SELF_MON] Flushed %d metrics: with error:%s", n, err)
-			log.Infof("[SELF_MON] EXIT from SELF_MON sender process for device:")
+			n, err := collectRuntimeStats()
+			if err != nil {
+				log.Infof("[SELF_MON] Flushed %d runtime metrics: with error:%s", n, err)
+			} else {
+				log.Infof("[SELF_MON] Flushed %d runtime metrics: OK", n)
+			}
+			n, err = collectLegacyRuntimeStats()
+			if err != nil {
+				log.Infof("[SELF_MON] Flushed %d Legacy runtime metrics: with error:%s", n, err)
+			} else {
+				log.Infof("[SELF_MON] Flushed %d Legacy runtime metrics: OK", n)
+			}
+
 			return
 		case <-flushTicker.C:
-			n, err := collectRuntimeData()
+			n, err := collectRuntimeStats()
 			if err != nil {
 				log.Infof("[SELF_MON] Flushed %d metrics: with error:%s", n, err)
 			} else {
 				log.Infof("[SELF_MON] Flushed %d metrics: OK", n)
+			}
+			n, err = collectLegacyRuntimeStats()
+			if err != nil {
+				log.Infof("[SELF_MON] Flushed %d Legacy runtime metrics: with error:%s", n, err)
+			} else {
+				log.Infof("[SELF_MON] Flushed %d Legacy runtime metrics: OK", n)
 			}
 
 		}
@@ -249,4 +271,75 @@ func SendSQLDriverStat(inst string, s sql.DBStats) {
 	m := metric.New(meas_name, tags, fields, now)
 	result = append(result, m)
 	output.SendMetrics(result)
+}
+
+func collectLegacyRuntimeStats() (int, error) {
+	result := []telegraf.Metric{}
+	nsInMs := float64(time.Millisecond)
+	memStats := &runtime.MemStats{}
+	runtime.ReadMemStats(memStats)
+
+	fields := make(map[string]interface{})
+
+	now := time.Now()
+	diffTime := now.Sub(lastSampleTime).Seconds()
+
+	fields["runtime_goroutines"] = runtime.NumGoroutine()
+	fields["mem.alloc"] = memStats.Alloc
+	fields["mem.mallocs"] = memStats.Mallocs
+	fields["mem.frees"] = memStats.Frees
+	fields["mem.sys"] = memStats.Sys
+
+	// HEAP
+
+	fields["mem.heap_alloc_bytes"] = memStats.HeapAlloc       // HeapAlloc is bytes of allocated heap objects.
+	fields["mem.heap_sys_bytes"] = memStats.HeapSys           // HeapSys is bytes of heap memory obtained from the OS.
+	fields["mem.heap_idle_bytes"] = memStats.HeapIdle         // HeapIdle is bytes in idle (unused) spans.
+	fields["mem.heap_in_use_bytes"] = memStats.HeapInuse      // HeapInuse is bytes in in-use spans.
+	fields["mem.heap_released_bytes"] = memStats.HeapReleased // HeapReleased is bytes of physical memory returned to the OS.
+	fields["mem.heap_objects"] = memStats.HeapObjects         // HeapObjects is the number of allocated heap objects.
+
+	// STACK/MSPAN/MCACHE
+
+	fields["mem.stack_in_use_bytes"] = memStats.StackInuse    // StackInuse is bytes in stack spans.
+	fields["mem.m_span_in_use_bytes"] = memStats.MSpanInuse   // MSpanInuse is bytes of allocated mspan structures.
+	fields["mem.m_cache_in_use_bytes"] = memStats.MCacheInuse // MCacheInuse is bytes of allocated mcache structures.
+
+	// Pause Count
+	fields["gc.total_pause_ns"] = float64(memStats.PauseTotalNs) / nsInMs
+
+	if lastPauseNs > 0 {
+		pauseSinceLastSample := memStats.PauseTotalNs - lastPauseNs
+		pauseInterval := float64(pauseSinceLastSample) / nsInMs
+		fields["gc.pause_per_interval"] = pauseInterval
+		fields["gc.pause_per_second"] = pauseInterval / diffTime
+		//		log.Debugf("SELFMON:Diftime(%f) |PAUSE X INTERVAL: %f | PAUSE X SECOND %f", diffTime, pauseInterval, pauseInterval/diffTime)
+	}
+	lastPauseNs = memStats.PauseTotalNs
+
+	// GC Count
+	countGc := int(memStats.NumGC - lastNumGc)
+	if lastNumGc > 0 {
+		diff := float64(countGc)
+		fields["gc.gc_per_second"] = diff / diffTime
+		fields["gc.gc_per_interval"] = diff
+	}
+	lastNumGc = memStats.NumGC
+
+	lastSampleTime = now
+
+	tags := make(map[string]string)
+
+	// and then added Extra tags from sefl-monitor config
+	for k, v := range conf.ExtraLabels {
+		tags[k] = v
+	}
+	meas_name := "runtime_gvm_stats"
+	if len(conf.Prefix) > 0 {
+		meas_name = conf.Prefix + meas_name
+	}
+	m := metric.New(meas_name, tags, fields, now)
+	result = append(result, m)
+	output.SendMetrics(result)
+	return 0, nil
 }
