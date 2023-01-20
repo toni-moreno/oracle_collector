@@ -210,6 +210,34 @@ query_timeout = "5s"
 
 [[oracle-monitor.mgroup.metric]]
 # Resource
+context = "base_cpu_mem"
+metrics_desc = { value="CPU , Mem consumption per Instance" }
+# automaticaly removes trailig and leading " and ' from the fields.
+# and transform to lowercase
+metrics_type = { total_sga_bytes='integer',total_allocated_pga_bytes='integer',total_allocated_mem_bytes='integer',total_host_cpu_pct='float'}
+request='''
+SELECT *
+FROM (
+        SELECT 'total_sga_bytes' as METRIC, sum(value) as value FROM v$sga
+        UNION
+        select 'total_allocated_pga_bytes', value from V$PGASTAT where name='total PGA allocated'
+        UNION
+        select 'max_allocated_pga_bytes', value from V$PGASTAT where name='maximum PGA allocated'
+        UNION
+        select 'total_allocated_mem_bytes', (select sum(value) from v$sga)+(select value from V$PGASTAT where name='maximum PGA allocated') as value from dual
+        UNION
+        select 'total_host_cpu_pct' , value from v$sysmetric where metric_name='CPU Usage Per Sec' and group_id=2
+        UNION
+        SELECT
+                DISTINCT *
+        FROM
+                TABLE(sys.ODCIVARCHAR2LIST('total_sga_bytes', 'total_allocated_pga_bytes','max_allocated_pga_bytes','total_allocated_mem_bytes', 'total_host_cpu_pct')),
+                TABLE(sys.ODCINUMBERLIST(0, 0, 0, 0,0))
+        )PIVOT (SUM(value) FOR METRIC in ('total_sga_bytes','total_allocated_pga_bytes','max_allocated_pga_bytes','total_allocated_mem_bytes','total_host_cpu_pct'))
+'''
+
+[[oracle-monitor.mgroup.metric]]
+# Resource
 context = "resource"
 labels = [ "resource_name" ]
 metrics_desc = { current_utilization= "Generic counter metric from v$resource_limit view in Oracle (current value).", limit_value="Generic counter metric from v$resource_limit view in Oracle (UNLIMITED: -1)." }
