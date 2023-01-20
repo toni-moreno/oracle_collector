@@ -10,10 +10,13 @@ log_level = "debug"
 [self-monitor]
 
 enabled = true
-request_period = "30s"
+request_period = "60s"
 #Measurement names will be
-# prefix + "runtime" + "XXX" ( for Go Runtime Stats)
+# prefix + "runtime" + "XXX" ( for New Go Runtime  Stats -- https://pkg.go.dev/runtime/metrics --)
+# prefix + "runtime_gvm_stats" ( for Go Legacy Runtime  Stats)
 # prefix + "collect_stats" ( for Query Stats )
+# prefix + "discover_stats" ( for Discovery Stats )
+# prefix + "sql_driver_stats" ( for Cliend side driver stats)
 measurement_prefix = "oc_"
 # labels/tags for self-monitoring will be contatenated/overwritted to the discovery extra_labels
 extra_labels = {ifx_db="oraclecol",group="Exadata",release="Legacy"}
@@ -709,16 +712,17 @@ query_timeout = "10m"
 
 [[oracle-monitor.mgroup.metric]]
 context = "query_stats"
+labels = [ "schema_name"]
 metrics_desc = { p95_time_usecs= "Gauge metric with percentile 95 of elapsed time.", p99_time_usecs= "Gauge metric with percentile 99 of elapsed time." }
 metrics_type = { elapsed_time_avg='float', elapsed_time_p95='float', elapsed_time_p99='float',rows_processed_avg='integer', rows_processed_p95='integer', rows_processed_p99='integer'}
 request = '''
-SELECT parsing_schema_name,
+SELECT parsing_schema_name as schema_name,
     round(avg(elapsed_time)/1000000,6) as elapsed_time_avg,
     round(avg(ROWS_PROCESSED)) as rows_processed_avg,
     ROUND(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY elapsed_time/1000000),6) elapsed_time_p95,
-    ROUND(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) row_processed_p95,
+    ROUND(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) rows_processed_p95,
     ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY elapsed_time/1000000),6) elapsed_time_p99,
-    ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) row_processed_p99
+    ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY ROWS_PROCESSED)) rows_processed_p99
 FROM v$sql
 where last_active_time >= SYSDATE - INTERVAL '1' HOUR
 GROUP BY parsing_schema_name
