@@ -59,7 +59,7 @@ func discover(cfg *config.DiscoveryConfig) {
 			continue
 		}
 		OraList.Add(inst)
-		output.SendMetrics(inst.StatusMetrics(true))
+		output.SendMetrics(inst.GetMetrics(true))
 	}
 	log.Debugf("[DISCOVERY] Old Instances Found [%d]: %+v", len(old), GetSidNames(old))
 	for _, inst := range old {
@@ -70,7 +70,7 @@ func discover(cfg *config.DiscoveryConfig) {
 			break
 		}
 		OraList.Delete(inst)
-		output.SendMetrics(inst.StatusMetrics(false))
+		output.SendMetrics(inst.GetMetrics(false))
 		selfmon.SendSQLDriverStat(inst.GetInstanceName(), inst.GetDriverStats())
 	}
 	log.Debugf("[DISCOVERY] Same Instances Found [%d]: %+v", len(same), GetSidNames(same))
@@ -81,7 +81,7 @@ func discover(cfg *config.DiscoveryConfig) {
 		if err != nil {
 			log.Errorf("[DISCOVERY] Error on Update Instance Info for [%s]: Err: %s", inst.DiscoveredSid, err)
 		}
-		output.SendMetrics(inst.StatusMetrics(true))
+		output.SendMetrics(inst.GetMetrics(true))
 		selfmon.SendSQLDriverStat(inst.GetInstanceName(), inst.GetDriverStats())
 	}
 

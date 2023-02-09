@@ -18,53 +18,75 @@ import (
 	_ "github.com/godror/godror"
 	"github.com/sirupsen/logrus"
 
+	"github.com/hashicorp/go-version"
 	"github.com/toni-moreno/oracle_collector/pkg/agent/data"
 	"github.com/toni-moreno/oracle_collector/pkg/config"
 )
 
 // https://docs.oracle.com/database/121/REFRN/GUID-A399F608-36C8-4DF0-9A13-CEE25637653E.htm#REFRN30652
 type PdbInfo struct {
-	ConID     int
-	Name      string
-	OpenMode  string
-	Resticted string
+	ConID          int
+	Name           string
+	OpenMode       string
+	Restricted     string
+	RecoveryStatus string
+	TotalSize      int
+	BlockSize      int
+}
+
+func (pi *PdbInfo) GetMetric(extralabels map[string]string) telegraf.Metric {
+	tags := make(map[string]string)
+	// first added extra tags
+	for k, v := range extralabels {
+		tags[k] = v
+	}
+	tags["pdb_name"] = pi.Name
+	fields := make(map[string]interface{})
+
+	fields["open_mode"] = pi.OpenMode
+	fields["restricted"] = pi.Restricted
+	fields["recovery_status"] = pi.RecoveryStatus
+	fields["total_size"] = pi.TotalSize
+	fields["block_size"] = pi.BlockSize
+	return metric.New("oracle_pdb_status", tags, fields, time.Now())
 }
 
 type InstanceInfo struct {
-	InstNumber      int    `db:"name:INSTANCE_NUMBER"`
-	InstName        string `db:"name:INSTANCE_NAME"`
-	HostName        string `db:"name:HOST_NAME"`
-	Version         string `db:"name:VERSION"`
-	StartupTime     string `db:"name:STARTUP_TIME"`
-	Uptime          string `db:"name:UPTIME"`
-	Status          string `db:"name:STATUS"`
-	DBStatus        string `db:"name:DATABASE_STATUS"`
-	InstanceRole    string `db:"name:INSTANCE_ROLE"`
-	ActiveState     string `db:"name:ACTIVE_STATE"`
-	Bloqued         string `db:"name:BLOCKED"`
-	ShutdownPending string `db:"name:SHUTDOWN_PENDING"`
-	Archiver        string `db:"name:ARCHIVER"`
+	InstNumber      int
+	InstName        string
+	HostName        string
+	Version         string
+	StartupTime     string
+	Uptime          string
+	Status          string
+	DBStatus        string
+	InstanceRole    string
+	ActiveState     string
+	Bloqued         string
+	ShutdownPending string
+	Archiver        string
 }
 
 type DatabaseInfo struct {
-	DBID         string    `db:"name:DBID"`
-	DbName       string    `db:"name:NAME"`
-	Created      string    `db:"name:CREATED"`
-	DBUniqName   string    `db:"name:DB_UNIQUE_NAME"`
-	CDB          string    `db:"name:CDB"`
-	OpenMode     string    `db:"name:OPEN_MODE"`
-	DatabaseRole string    `db:"name:DATABASE_ROLE"`
-	ForceLogging string    `db:"name:FORCE_LOGGING"`
-	LogMode      string    `db:"name:LOG_MODE"`
-	PDBs         []PdbInfo `db:"-"`
-	PDBTotal     int       `db:"-"`
-	PDBActive    int       `db:"-"`
+	DBID         string
+	DbName       string
+	Created      string
+	DBUniqName   string
+	CDB          string
+	OpenMode     string
+	DatabaseRole string
+	ForceLogging string
+	LogMode      string
+	PDBs         []PdbInfo
+	PDBTotal     int
+	PDBActive    int
 }
 
 type OracleInstance struct {
 	sync.Mutex
 	DiscoveredSid string
 	// Instance Info
+	InitVersion *version.Version // First version check
 
 	InstInfo InstanceInfo
 	DBInfo   DatabaseInfo
@@ -187,6 +209,31 @@ func CreateLoggerForSid(sid string, loglevel string) *logrus.Logger {
 	return log
 }
 
+func (oi *OracleInstance) GetVersion() error {
+	var err error
+	oi.Lock()
+	defer oi.Unlock()
+	log.Infof("[DISCOVERY] Get Version Instance Info...")
+	query := "select VERSION from V$INSTANCE"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	row := oi.conn.QueryRowContext(ctx, query)
+
+	var ver string
+	err = row.Scan(&ver)
+	if err != nil {
+		return err
+	}
+	oi.InitVersion, err = version.NewVersion(ver)
+	if err != nil {
+		return fmt.Errorf("Error on format version %s", err)
+	}
+
+	return nil
+}
+
 func (oi *OracleInstance) UpdateInfo() error {
 	oi.Lock()
 	defer oi.Unlock()
@@ -194,23 +241,49 @@ func (oi *OracleInstance) UpdateInfo() error {
 	// tested on 11.2.0.4.0/12.1.0.2.0/19.7.0.0.0
 	log.Infof("[DISCOVERY] Initialize/Update Instance Info...")
 	// VERSION_FULL as VERSION not working on 11.2.0.4
-	query := `
-	select 
-		INSTANCE_NUMBER,
-		INSTANCE_NAME,
-		HOST_NAME,
-		VERSION,
-		STARTUP_TIME,
-		FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
-		STATUS,
-		DATABASE_STATUS,
-		INSTANCE_ROLE,
-		ACTIVE_STATE,
-		BLOCKED,
-		SHUTDOWN_PENDING,
-		ARCHIVER
-	from V$INSTANCE
-	`
+	var query string
+	v18c, _ := version.NewVersion("12.2.0.2")
+	switch {
+	// https://oracle-base.com/articles/18c/articles-18c
+	// https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-INSTANCE.html
+	case oi.InitVersion.GreaterThan(v18c): // 18c
+		query = `
+				select 
+					INSTANCE_NUMBER,
+					INSTANCE_NAME,
+					HOST_NAME,
+					VERSION_FULL AS VERSION,
+					STARTUP_TIME,
+					FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
+					STATUS,
+					DATABASE_STATUS,
+					INSTANCE_ROLE,
+					ACTIVE_STATE,
+					BLOCKED,
+					SHUTDOWN_PENDING,
+					ARCHIVER
+				from V$INSTANCE
+				`
+	default:
+		query = `
+				select 
+					INSTANCE_NUMBER,
+					INSTANCE_NAME,
+					HOST_NAME,
+					VERSION,
+					STARTUP_TIME,
+					FLOOR((SYSDATE - STARTUP_TIME) * 60 * 60 * 24) as UPTIME,
+					STATUS,
+					DATABASE_STATUS,
+					INSTANCE_ROLE,
+					ACTIVE_STATE,
+					BLOCKED,
+					SHUTDOWN_PENDING,
+					ARCHIVER
+				from V$INSTANCE
+		`
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -246,6 +319,7 @@ func (oi *OracleInstance) UpdateInfo() error {
 		rowsCount += 1
 	}
 	log.Debugf("[DISCOVERY] Instance Rows:%d", rowsCount)
+	oi.InitVersion, _ = version.NewVersion(oi.InstInfo.Version)
 
 	// https://www.oracletutorial.com/oracle-administration/oracle-startup/
 	// ------------------------------------------------
@@ -294,60 +368,116 @@ func (oi *OracleInstance) UpdateInfo() error {
 	log.Debugf("[DISCOVERY] DB Rows:%d", rowsCount)
 	// Check if this instance will be useful for DB level queries
 	// if ClusterWare Mode Enabled
+	//  by default disabled
+	oi.IsValidForDBQuery = false
 	if oi.ClusteWareEnabled {
 		query = `SELECT MIN(INSTANCE_NUMBER) AS MIN FROM GV$INSTANCE`
-		rows_db, err := oi.conn.QueryContext(ctx, query)
-		if err != nil {
-			log.Warnf("[DISCOVERY] Error in database Query:%s", err)
-			return err
-		}
-		defer rows_db.Close()
+		row := oi.conn.QueryRowContext(ctx, query)
 		var min int
 		rowsCount = 0
-		for rows_db.Next() {
-			err = rows_db.Scan(&min)
-			if err != nil {
-				return err
-			}
-			rowsCount += 1
+
+		err = row.Scan(&min)
+		if err != nil {
+			return err
 		}
-		log.Debugf("[DISCOVERY] Cluster Rows:%d (MIN: %d)", rowsCount, min)
+
+		log.Debugf("[DISCOVERY] Cluster (MIN: %d)", min)
 		if oi.InstInfo.InstNumber == min {
 			log.Debugf("This instance %s[%d] is the lowest instance => Is Valid for DB Queries ", oi.InstInfo.InstName, oi.InstInfo.InstNumber)
 			oi.IsValidForDBQuery = true
 		}
+	} else {
+		// all db queries shoud be done also if clusterware not enabled
+		oi.IsValidForDBQuery = true
 	}
 
 	// Initialice PDB's info.
 	log.Infof("[DISCOVERY] Initialize/Update PDB Info...")
 	oi.DBInfo.PDBs = nil
-	query = "select CON_ID,NAME,OPEN_MODE from v$pdbs"
-	rows_pdb, err := oi.conn.QueryContext(ctx, query)
-	if err != nil {
-		log.Warnf("[DISCOVERY] Error in PDB Query:%s", err)
-		return err
-	}
-	defer rows_pdb.Close()
+	// https://docs.oracle.com/database/121/REFRN/GUID-A399F608-36C8-4DF0-9A13-CEE25637653E.htm#REFRN30652
 
+	v12_1_0_2, _ := version.NewVersion("12.1.0.2")
 	rowsCount = 0
 	activeCount := 0
-	for rows_pdb.Next() {
-		pdb := PdbInfo{}
-		err = rows_pdb.Scan(
-			&pdb.ConID,
-			&pdb.Name,
-			&pdb.OpenMode,
-		)
-
+	switch {
+	case oi.InitVersion.LessThan(v12_1_0_2):
+		query = `
+					select 
+						CON_ID,
+						NAME,
+						OPEN_MODE,
+						RESTRICTED,
+						TOTAL_SIZE,
+					from v$pdbs
+					`
+		rows_pdb, err := oi.conn.QueryContext(ctx, query)
 		if err != nil {
+			log.Warnf("[DISCOVERY] Error in PDB Query:%s", err)
 			return err
 		}
-		rowsCount += 1
-		oi.DBInfo.PDBs = append(oi.DBInfo.PDBs, pdb)
-		if pdb.OpenMode == "READ WRITE" {
-			activeCount++
+		defer rows_pdb.Close()
+
+		for rows_pdb.Next() {
+			pdb := PdbInfo{}
+			err = rows_pdb.Scan(
+				&pdb.ConID,
+				&pdb.Name,
+				&pdb.OpenMode,
+				&pdb.Restricted,
+				&pdb.TotalSize,
+			)
+
+			if err != nil {
+				return err
+			}
+			rowsCount += 1
+			oi.DBInfo.PDBs = append(oi.DBInfo.PDBs, pdb)
+			if pdb.OpenMode == "READ WRITE" {
+				activeCount++
+			}
+		}
+	default:
+		query = `
+					select 
+						CON_ID,
+						NAME,
+						OPEN_MODE,
+						RESTRICTED,
+						RECOVERY_STATUS,
+						TOTAL_SIZE,
+						BLOCK_SIZE
+					from v$pdbs
+					`
+		rows_pdb, err := oi.conn.QueryContext(ctx, query)
+		if err != nil {
+			log.Warnf("[DISCOVERY] Error in PDB Query:%s", err)
+			return err
+		}
+		defer rows_pdb.Close()
+
+		for rows_pdb.Next() {
+			pdb := PdbInfo{}
+			err = rows_pdb.Scan(
+				&pdb.ConID,
+				&pdb.Name,
+				&pdb.OpenMode,
+				&pdb.Restricted,
+				&pdb.RecoveryStatus,
+				&pdb.TotalSize,
+				&pdb.BlockSize,
+			)
+
+			if err != nil {
+				return err
+			}
+			rowsCount += 1
+			oi.DBInfo.PDBs = append(oi.DBInfo.PDBs, pdb)
+			if pdb.OpenMode == "READ WRITE" {
+				activeCount++
+			}
 		}
 	}
+
 	oi.DBInfo.PDBTotal = rowsCount
 	oi.DBInfo.PDBActive = activeCount
 	log.Debugf("[DISCOVERY] PDB's Rows:%d, Active %d", rowsCount, activeCount)
@@ -417,6 +547,7 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 		return fmt.Errorf("ConnectDNS: %s: ERR: %s", dsn, err)
 	}
 	oi.Unlock()
+	oi.GetVersion()
 	return oi.UpdateInfo()
 }
 
@@ -495,4 +626,22 @@ func (oi *OracleInstance) StatusMetrics(process_ok bool) []telegraf.Metric {
 	status := metric.New("oracle_status", tags, fields, time.Now())
 
 	return []telegraf.Metric{status}
+}
+
+func (oi *OracleInstance) GetMetrics(process_ok bool) []telegraf.Metric {
+	var ret []telegraf.Metric
+
+	im := oi.StatusMetrics(process_ok)
+	ret = append(ret, im...)
+	// Sending pdb metrics only if valid for db queries
+	// ( single instances or clusterware enabled and vaildforDBQuery's check is true)
+
+	if oi.IsValidForDBQuery {
+		for _, v := range oi.DBInfo.PDBs {
+			pm := v.GetMetric(oi.labels)
+			ret = append(ret, pm)
+		}
+	}
+
+	return ret
 }
