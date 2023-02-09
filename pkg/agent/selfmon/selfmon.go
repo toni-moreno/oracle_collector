@@ -166,13 +166,14 @@ func startSelfmonCollector() {
 
 			return
 		case <-flushTicker.C:
-			n, err := collectRuntimeStats()
-			if err != nil {
-				log.Infof("[SELF_MON] Flushed %d metrics: with error:%s", n, err)
-			} else {
-				log.Infof("[SELF_MON] Flushed %d metrics: OK", n)
-			}
-			n, err = collectLegacyRuntimeStats()
+			/*
+				n, err := collectRuntimeStats()
+				if err != nil {
+					log.Infof("[SELF_MON] Flushed %d metrics: with error:%s", n, err)
+				} else {
+					log.Infof("[SELF_MON] Flushed %d metrics: OK", n)
+				}*/
+			n, err := collectLegacyRuntimeStats()
 			if err != nil {
 				log.Infof("[SELF_MON] Flushed %d Legacy runtime metrics: with error:%s", n, err)
 			} else {
