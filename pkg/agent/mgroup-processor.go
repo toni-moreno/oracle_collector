@@ -48,6 +48,20 @@ func (mgp *MGroupProcessor) UpdateInstances() int {
 	return nfilter
 }
 
+// lt = lessThan
+// goet = greater or equal than
+func checkVersions(i *oracle.OracleInstance, goet, lt string) (string, bool) {
+	switch {
+	case len(lt) > 0 && len(goet) > 0:
+		return i.CheckVersionBetween(goet, lt)
+	case len(lt) > 0:
+		return i.CheckVersionLessThan(lt)
+	case len(goet) > 0:
+		return i.CheckVersionGreaterThanOrEqual(goet)
+	}
+	return "", true
+}
+
 func (mgp *MGroupProcessor) ProcesQuery() {
 	n := mgp.UpdateInstances()
 	mgp.BroadCastInfof("Init Query Process on [%d] Instances [%+v] ", n, mgp.InstNames)
@@ -61,6 +75,12 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 		}
 		extraLabels := i.GetExtraLabels()
 		for _, q := range mgp.cfg.OracleMetrics {
+			// check version affinity
+			v, match := checkVersions(i, q.OraVerGreaterOrEqualThan, q.OraVerLessThan)
+			if !match {
+				mgp.Infof(i, "Metric Query: [%s] | version filter [ %s, %s ): NOT MATCH IN Instance [%s]version[%s]", q.Context, q.OraVerGreaterOrEqualThan, q.OraVerLessThan, i.GetInstanceName(), v)
+				continue
+			}
 			mgp.Debugf(i, "Begin Metric Query: [%s]", q.Context)
 			table := data.NewDatatableWithConfig(&q)
 			n, d, err := i.Query(mgp.cfg.QueryTimeout, q.Request, table)

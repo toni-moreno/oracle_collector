@@ -234,6 +234,28 @@ func (oi *OracleInstance) GetVersion() error {
 	return nil
 }
 
+func (oi *OracleInstance) CheckVersionGreaterThanOrEqual(ver string) (string, bool) {
+	oi.Lock()
+	defer oi.Unlock()
+	v, _ := version.NewVersion(ver)
+	return oi.InitVersion.String(), oi.InitVersion.GreaterThanOrEqual(v)
+}
+
+func (oi *OracleInstance) CheckVersionLessThan(ver string) (string, bool) {
+	oi.Lock()
+	defer oi.Unlock()
+	v, _ := version.NewVersion(ver)
+	return oi.InitVersion.String(), oi.InitVersion.LessThan(v)
+}
+
+func (oi *OracleInstance) CheckVersionBetween(lower_ver, upper_ver string) (string, bool) {
+	oi.Lock()
+	defer oi.Unlock()
+	l, _ := version.NewVersion(lower_ver)
+	u, _ := version.NewVersion(upper_ver)
+	return oi.InitVersion.String(), (oi.InitVersion.GreaterThanOrEqual(l) && oi.InitVersion.LessThan(u))
+}
+
 func (oi *OracleInstance) UpdateInfo() error {
 	oi.Lock()
 	defer oi.Unlock()

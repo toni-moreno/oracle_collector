@@ -52,13 +52,16 @@ type SelfMonConfig struct {
 
 // InheritDeviceTags bool          `toml:"inherit-intance-labels"`
 type OracleMetricConfig struct {
-	Context          string            `toml:"context"`
-	Labels           []string          `toml:"labels"`
-	MetricsDesc      map[string]string `toml:"metrics_desc"`
-	MetricsType      map[string]string `toml:"metrics_type"`
-	FieldToAppend    string            `toml:"fieldtoappend"`
-	Request          string            `toml:"request"`
-	IgnoreZeroResult bool              `toml:"ignorezeroresult"`
+	ID                       string            `toml:"id"`
+	OraVerGreaterOrEqualThan string            `toml:"oracle_version_greater_or_equal_than"`
+	OraVerLessThan           string            `toml:"oracle_version_less_than"`
+	Context                  string            `toml:"context"`
+	Labels                   []string          `toml:"labels"`
+	MetricsDesc              map[string]string `toml:"metrics_desc"`
+	MetricsType              map[string]string `toml:"metrics_type"`
+	FieldToAppend            string            `toml:"fieldtoappend"`
+	Request                  string            `toml:"request"`
+	IgnoreZeroResult         bool              `toml:"ignorezeroresult"`
 	// MetricsBuckets   map[string]map[string]string
 }
 
