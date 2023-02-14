@@ -214,7 +214,9 @@ context = "base_cpu_mem"
 metrics_desc = { value="CPU , Mem consumption per Instance" }
 # automaticaly removes trailig and leading " and ' from the fields.
 # and transform to lowercase
-metrics_type = { total_sga_bytes='integer',total_allocated_pga_bytes='integer',total_allocated_mem_bytes='integer',total_host_cpu_pct='float'}
+# Info here:
+# https://dbakevlar.com/2013/08/oracle-cpu-time/
+metrics_type = { total_sga_bytes='integer',total_allocated_pga_bytes='integer',max_allocated_pga_bytes='integer',total_allocated_mem_bytes='integer',total_host_cpu_pct='float'}
 request='''
 SELECT *
 FROM (
@@ -603,17 +605,36 @@ SELECT
 FROM
     V$DATAFILE
 '''
-
 [[oracle-monitor.mgroup.metric]]
-# Tablespaces
+id = "tablespace_goet_12.1"
+# Tablespaces => 12.1
+oracle_version_greater_or_equal_than = "12.1"
+#oracle_version_less_than = "25"
 context = "tablespace"
-labels = [ "tablespace_name", "contents" ]
+labels = [ "tablespace_name", "contents","pdb_name","autoextensible","bigfile" ]
 metrics_desc = { value="statistics usage for each tablespace" }
-metrics_type = { file_bytes = 'integer', max_bytes = 'integer', free_bytes='integer',used_bytes='integer',used_pct_max='float',use_file_pct='float',status='integer'}
+metrics_type = { file_bytes = 'integer', max_bytes = 'integer', free_bytes='integer',used_bytes='integer',used_pct_max='float',used_file_pct='float',status='integer'}
 request = '''
+SELECT 
+    x.TABLESPACE_NAME,
+    NVL2(p.NAME,p.NAME,DECODE(x.CON_ID,0,'CDB',1,'CDB$ROOT')) as PDB_NAME,
+    x.AUTOEXTENSIBLE,
+    x.CONTENTS,
+    x.BIGFILE,
+    x.FILE_BYTES,
+    x.MAX_BYTES,
+    x.FREE_BYTES,
+    x.USED_BYTES,
+    x.USED_PCT_MAX,
+    x.USED_FILE_PCT,
+    x.STATUS
+FROM (
 SELECT
     df.TABLESPACE_NAME AS TABLESPACE_NAME,
+    df.CON_ID AS CON_ID,
+    df.AUTOEXTENSIBLE,
     df.CONTENTS AS CONTENTS,
+    df.BIGFILE,
     NVL(SUM(df.BYTES), 0) AS FILE_BYTES,
     NVL(SUM(df.MAX_BYTES), 0) AS MAX_BYTES,
     NVL(SUM(f.FREE), 0) AS FREE_BYTES,
@@ -625,17 +646,143 @@ FROM
     (
     SELECT
         ddf.FILE_ID,
+        dt.CON_ID,
+        dt.BIGFILE,
         dt.CONTENTS,
         dt.STATUS,
         ddf.FILE_NAME,
         ddf.TABLESPACE_NAME,
+        ddf.AUTOEXTENSIBLE,
+        TRUNC(ddf.BYTES) AS BYTES,
+        TRUNC(GREATEST(ddf.BYTES, ddf.MAXBYTES)) AS MAX_BYTES
+    FROM
+        CDB_DATA_FILES ddf,
+        CDB_TABLESPACES dt
+    WHERE
+        ddf.TABLESPACE_NAME = dt.TABLESPACE_NAME
+    ) df,
+    (
+    SELECT
+        TRUNC(SUM(BYTES)) AS FREE,
+        FILE_ID
+    FROM
+        CDB_FREE_SPACE
+    GROUP BY
+        FILE_ID
+    ) f
+WHERE
+    df.FILE_ID = f.FILE_ID (+)
+GROUP BY
+    df.TABLESPACE_NAME, df.CONTENTS, df.STATUS, df.BIGFILE,df.CON_ID,df.AUTOEXTENSIBLE
+UNION ALL
+SELECT
+    Y.NAME AS TABLESPACE_NAME,
+    Y.CON_ID AS CON_ID,
+    Y.AUTOEXTENSIBLE,
+    Y.CONTENTS AS CONTENTS,
+    Y.BIGFILE,
+    NVL(SUM(Y.BYTES), 0) AS FILE_BYTES,
+    NVL(SUM(Y.MAX_BYTES), 0) AS MAX_BYTES,
+    NVL(MAX(NVL(Y.FREE_BYTES, 0)), 0) AS FREE,
+    SUM(Y.BYTES)-MAX(Y.FREE_BYTES) AS USED_BYTES,
+    ROUND(DECODE(SUM(Y.MAX_BYTES), 0, 0, (SUM(Y.BYTES) / SUM(Y.MAX_BYTES) * 100)), 2) AS USED_PCT_MAX,
+    ROUND(DECODE(SUM(Y.BYTES), 0, 0, (SUM(Y.BYTES)-MAX(Y.FREE_BYTES)) / SUM(Y.BYTES)* 100), 2) AS USED_FILE_PCT,
+    DECODE(Y.TBS_STATUS, 'ONLINE', 1, 'OFFLINE', 2, 'READ ONLY', 3, 0) AS STATUS
+FROM
+    (
+    SELECT
+        dtf.TABLESPACE_NAME AS NAME,
+        dt.CONTENTS,
+        dt.CON_ID,
+        dt.BIGFILE,
+        dtf.AUTOEXTENSIBLE,
+        dt.STATUS AS TBS_STATUS,
+        dtf.STATUS AS STATUS,
+        dtf.BYTES AS BYTES,
+        (
+        SELECT
+            ((f.TOTAL_BLOCKS - s.TOT_USED_BLOCKS) * vp.VALUE)
+        FROM
+            (
+            SELECT
+                TABLESPACE_NAME, SUM(USED_BLOCKS) TOT_USED_BLOCKS
+            FROM
+                GV$SORT_SEGMENT
+            WHERE
+                TABLESPACE_NAME != 'DUMMY'
+            GROUP BY
+                TABLESPACE_NAME) s, (
+            SELECT
+                TABLESPACE_NAME, SUM(BLOCKS) TOTAL_BLOCKS
+            FROM
+                CDB_TEMP_FILES
+            WHERE
+                TABLESPACE_NAME != 'DUMMY'
+            GROUP BY
+                TABLESPACE_NAME) f, (
+            SELECT
+                VALUE
+            FROM
+                V$PARAMETER
+            WHERE
+                NAME = 'db_block_size') vp
+        WHERE
+            f.TABLESPACE_NAME = s.TABLESPACE_NAME
+            AND f.TABLESPACE_NAME = dtf.TABLESPACE_NAME
+        ) AS FREE_BYTES,
+        CASE
+            WHEN dtf.MAXBYTES = 0 THEN dtf.BYTES
+            ELSE dtf.MAXBYTES
+        END AS MAX_BYTES
+    FROM
+        sys.CDB_TEMP_FILES dtf,
+        sys.CDB_TABLESPACES dt
+    WHERE
+        dtf.TABLESPACE_NAME = dt.TABLESPACE_NAME ) Y
+GROUP BY
+    Y.NAME, Y.CONTENTS, Y.TBS_STATUS, Y.CON_ID, Y.BIGFILE, Y.AUTOEXTENSIBLE
+) x left outer join v$pdbs p
+ON x.CON_ID = p.CON_ID
+'''
+
+[[oracle-monitor.mgroup.metric]]
+id = "tablespace_lt_12.1"
+# Tablespaces < 12.1
+oracle_version_less_than = "12.1"
+context = "tablespace"
+labels = [ "tablespace_name", "contents","autoextensible","bigfile" ]
+metrics_desc = { value="statistics usage for each tablespace" }
+metrics_type = { file_bytes = 'integer', max_bytes = 'integer', free_bytes='integer',used_bytes='integer',used_pct_max='float',used_file_pct='float',status='integer'}
+request = '''
+SELECT
+    df.TABLESPACE_NAME AS TABLESPACE_NAME,
+    df.AUTOEXTENSIBLE,
+    df.CONTENTS AS CONTENTS,
+    df.BIGFILE,
+    NVL(SUM(df.BYTES), 0) AS FILE_BYTES,
+    NVL(SUM(df.MAX_BYTES), 0) AS MAX_BYTES,
+    NVL(SUM(f.FREE), 0) AS FREE_BYTES,
+    SUM(df.BYTES)-SUM(f.FREE) AS USED_BYTES,
+    ROUND(DECODE(SUM(df.MAX_BYTES), 0, 0, (SUM(df.BYTES) / SUM(df.MAX_BYTES) * 100)), 2) AS USED_PCT_MAX,
+    ROUND(DECODE(SUM(df.BYTES), 0, 0, (SUM(df.BYTES)-SUM(f.FREE)) / SUM(df.BYTES)* 100), 2) AS USED_FILE_PCT,
+    DECODE(df.STATUS, 'ONLINE', 1, 'OFFLINE', 2, 'READ ONLY', 3, 0) AS STATUS
+FROM
+    (
+    SELECT
+        ddf.FILE_ID,
+        dt.BIGFILE,
+        dt.CONTENTS,
+        dt.STATUS,
+        ddf.FILE_NAME,
+        ddf.TABLESPACE_NAME,
+        ddf.AUTOEXTENSIBLE,
         TRUNC(ddf.BYTES) AS BYTES,
         TRUNC(GREATEST(ddf.BYTES, ddf.MAXBYTES)) AS MAX_BYTES
     FROM
         DBA_DATA_FILES ddf,
         DBA_TABLESPACES dt
     WHERE
-        ddf.TABLESPACE_NAME = dt.TABLESPACE_NAME
+        ddf.TABLESPACE_NAME = dt.TABLESPACE_NAME 
     ) df,
     (
     SELECT
@@ -649,11 +796,13 @@ FROM
 WHERE
     df.FILE_ID = f.FILE_ID (+)
 GROUP BY
-    df.TABLESPACE_NAME, df.CONTENTS, df.STATUS
+    df.TABLESPACE_NAME, df.CONTENTS, df.STATUS, df.BIGFILE,df.AUTOEXTENSIBLE
 UNION ALL
 SELECT
     Y.NAME AS TABLESPACE_NAME,
+    Y.AUTOEXTENSIBLE,
     Y.CONTENTS AS CONTENTS,
+    Y.BIGFILE,
     NVL(SUM(Y.BYTES), 0) AS FILE_BYTES,
     NVL(SUM(Y.MAX_BYTES), 0) AS MAX_BYTES,
     NVL(MAX(NVL(Y.FREE_BYTES, 0)), 0) AS FREE,
@@ -666,6 +815,8 @@ FROM
     SELECT
         dtf.TABLESPACE_NAME AS NAME,
         dt.CONTENTS,
+        dt.BIGFILE,
+        dtf.AUTOEXTENSIBLE,
         dt.STATUS AS TBS_STATUS,
         dtf.STATUS AS STATUS,
         dtf.BYTES AS BYTES,
@@ -710,7 +861,7 @@ FROM
     WHERE
         dtf.TABLESPACE_NAME = dt.TABLESPACE_NAME ) Y
 GROUP BY
-    Y.NAME, Y.CONTENTS, Y.TBS_STATUS
+    Y.NAME, Y.CONTENTS, Y.TBS_STATUS, Y.BIGFILE,Y.AUTOEXTENSIBLE
 '''
 
 [[oracle-monitor.mgroup.metric]]
