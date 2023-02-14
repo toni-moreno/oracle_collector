@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -143,11 +142,7 @@ func (oi *OracleInstance) initExtraLabels() map[string]string {
 
 	for n, rule := range oi.cfg.DynamicParamsBySID {
 		oi.log.Debugf("EXTRA LABELS: Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
-		match, err := regexp.MatchString(rule.SidRegex, SID)
-		if err != nil {
-			oi.log.Warnf("EXTRA LABELS: on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
-			return oi.labels
-		}
+		match := rule.R.MatchString(SID)
 		if match {
 			for k, v := range rule.ExtraLabels {
 				oi.labels[k] = v
@@ -418,10 +413,13 @@ func (oi *OracleInstance) UpdateInfo() error {
 	oi.DBInfo.PDBs = nil
 	// https://docs.oracle.com/database/121/REFRN/GUID-A399F608-36C8-4DF0-9A13-CEE25637653E.htm#REFRN30652
 
+	v12c, _ := version.NewVersion("12.1")
 	v12_1_0_2, _ := version.NewVersion("12.1.0.2")
 	rowsCount = 0
 	activeCount := 0
 	switch {
+	case oi.InitVersion.LessThan(v12c):
+		// nothing to do: not supported PDB's
 	case oi.InitVersion.LessThan(v12_1_0_2):
 		query = `
 					select 
@@ -523,11 +521,7 @@ func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
 
 	for n, rule := range oi.cfg.DynamicParamsBySID {
 		log.Debugf("ORACLE INIT: Applying rule [%d] info with sid_regex = %s", n, rule.SidRegex)
-		match, err := regexp.MatchString(rule.SidRegex, oi.DiscoveredSid)
-		if err != nil {
-			log.Warnf("ORACLE INIT: Error on rule[%d] matching regexp %s: error: %s", n, rule.SidRegex, err)
-			continue
-		}
+		match := rule.R.MatchString(oi.DiscoveredSid)
 		if match {
 			log.Infof("ORACLE INIT: Dinamic params match at rule %d:[%s] ", n, rule.SidRegex)
 			if len(rule.OracleConnectDSN) > 0 {

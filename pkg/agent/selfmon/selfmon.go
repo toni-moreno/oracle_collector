@@ -198,7 +198,8 @@ func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupC
 	}
 
 	tags["metric_group"] = mgc.Name
-	tags["metric_context"] = mc.Context
+	tags["metric_context"] = mc.Context // maintained for compatibility
+	tags["metric_id"] = mc.ID
 	fields := make(map[string]interface{})
 	fields["num_metrics"] = n
 	fields["duration_us"] = t.Microseconds()

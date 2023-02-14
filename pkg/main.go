@@ -99,6 +99,11 @@ func init() {
 			log.Errorf("Fatal error config file: %s \n", err)
 			os.Exit(1)
 		}
+		err = cfg.Validate()
+		if err != nil {
+			log.Errorf("Fatal error in config file: %s \n", err)
+			os.Exit(1)
+		}
 		agent.MainConfig = *cfg
 
 		// viper.SetConfigFile(configFile)

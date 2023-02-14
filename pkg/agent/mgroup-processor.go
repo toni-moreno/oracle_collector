@@ -69,7 +69,7 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 	log.Infof("[COLLECTOR] Processor [%s] new Iteration on [%d] Instances [%+v]", mgp.cfg.Name, n, mgp.InstNames)
 	for _, i := range mgp.OracleInstances {
 		// check if this instance should be queried
-		if mgp.cfg.GetQueryLevel() == "db" && !i.GetIsValidForDBQuery() {
+		if mgp.cfg.QueryLevel == "db" && !i.GetIsValidForDBQuery() {
 			mgp.Infof(i, "QUERY IN DB MODE: SKIP querying instance %s : not smalest Instance in DB (Current %d)", i.InstInfo.InstName, i.InstInfo.InstNumber)
 			continue
 		}
@@ -82,7 +82,7 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 				continue
 			}
 			mgp.Debugf(i, "Begin Metric Query: [%s]", q.Context)
-			table := data.NewDatatableWithConfig(&q)
+			table := data.NewDatatableWithConfig(q)
 			n, d, err := i.Query(mgp.cfg.QueryTimeout, q.Request, table)
 			if err != nil {
 				mgp.Errorf(i, "Error on query: %s (Duration: %s)", err, d)
@@ -96,7 +96,7 @@ func (mgp *MGroupProcessor) ProcesQuery() {
 				continue
 			}
 			output.SendMetrics(metrics)
-			selfmon.SendQueryStat(extraLabels, mgp.cfg, &q, n, d)
+			selfmon.SendQueryStat(extraLabels, mgp.cfg, q, n, d)
 		}
 	}
 }

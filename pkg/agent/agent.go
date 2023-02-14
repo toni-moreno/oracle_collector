@@ -74,12 +74,12 @@ func End() (time.Duration, error) {
 func Start() {
 	done := make(chan bool)
 	// init SelfMonitoring
-	selfmon.Init(&MainConfig.Selfmon)
+	selfmon.Init(MainConfig.Selfmon)
 
 	// init Output Sync process
-	output.Init(&MainConfig.Output)
+	output.Init(MainConfig.Output)
 	// init discovery process
-	oracle.InitDiscovery(&MainConfig.Discovery, done)
+	oracle.InitDiscovery(MainConfig.Discovery, done)
 	// init SystemMonitor Process
 
 	cfg := MainConfig.OraMon
