@@ -41,6 +41,8 @@ oracle_connect_dsn="server01_IP0:1521/SID"
 
 extra_labels = {ifx_db="oracle_db",group="Exadata",release="Legacy"}
 
+oracle_status_extended_info = false
+
 #Log level for all oracle interaction 
 # trace,debug,info,warn/warning,error,fatal,panic
 # oracle_log_level = "error" #on PRO
