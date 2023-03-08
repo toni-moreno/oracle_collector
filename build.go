@@ -36,13 +36,13 @@ var (
 	serverBinaryName      string = "oracle_collector"
 )
 
-const minGoVersion = 1.11
+const minGoVersion = 1.19
 
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(0)
 
-	ensureGoPath()
+	// ensureGoPath()
 	// readVersionFromPackageJson()
 	// readVersionFromChangelog()
 	readVersionFromGit()
