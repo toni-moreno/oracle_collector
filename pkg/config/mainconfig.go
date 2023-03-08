@@ -47,6 +47,7 @@ type DiscoveryConfig struct {
 	OracleConnectPass        string            `toml:"oracle_connect_pass"`
 	OracleConnectDSN         string            `toml:"oracle_connect_dsn"`
 	ExtraLabels              map[string]string `toml:"extra_labels"`
+	OracleStatusExtendedInfo bool              `toml:"oracle_status_extended_info"`
 	OracleLogLevel           string            `toml:"oracle_log_level"`
 	DynamicParamsBySID       []*DinamicParams  `toml:"dynamic-params"`
 }

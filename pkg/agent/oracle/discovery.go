@@ -51,7 +51,7 @@ func discover(cfg *config.DiscoveryConfig) {
 	for _, inst := range new {
 		inst.cfg = cfg
 		log.Infof("[DISCOVERY] New Instance found: %s", inst.DiscoveredSid)
-		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled)
+		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled, cfg.OracleStatusExtendedInfo)
 		if err != nil {
 			errorConnect++
 			errorConnectSids = append(errorConnectSids, inst.DiscoveredSid)

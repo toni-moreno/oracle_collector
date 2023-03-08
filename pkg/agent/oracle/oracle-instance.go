@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,8 +91,9 @@ type OracleInstance struct {
 	InstInfo InstanceInfo
 	DBInfo   DatabaseInfo
 
-	ClusteWareEnabled bool
-	IsValidForDBQuery bool
+	ClusteWareEnabled  bool
+	IsValidForDBQuery  bool
+	StatusExtendedInfo bool
 
 	AlertLogFile string
 	ListenerIP   string
@@ -152,10 +154,9 @@ func (oi *OracleInstance) initExtraLabels() map[string]string {
 	// Oracle Mandatory Labels.
 
 	oi.labels["instance"] = oi.InstInfo.InstName
-	// labels["instance_num"] = strconv.Itoa(oi.InstInfo.InstNumber)
 	oi.labels["instance_role"] = oi.InstInfo.InstanceRole
 	oi.labels["db"] = oi.DBInfo.DbName
-	// labels["db_unique_name"] = oi.DBInfo.DBUniqName
+	oi.labels["db_unique_name"] = oi.DBInfo.DBUniqName
 	return oi.labels
 }
 
@@ -506,10 +507,11 @@ func (oi *OracleInstance) UpdateInfo() error {
 	return nil
 }
 
-func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool) error {
+func (oi *OracleInstance) Init(loglevel string, ClusterwareEnabled bool, StatusExtendedInfo bool) error {
 	var err error
 
 	oi.ClusteWareEnabled = ClusterwareEnabled
+	oi.StatusExtendedInfo = StatusExtendedInfo
 
 	oi.log = CreateLoggerForSid(oi.DiscoveredSid, loglevel)
 
@@ -584,61 +586,41 @@ func (oi *OracleInstance) StatusMetrics(process_ok bool) []telegraf.Metric {
 		tags[k] = v
 	}
 	fields := make(map[string]interface{})
-
+	// From system process
 	fields["proc_ok"] = process_ok
 	fields["proc_pid"] = oi.PMONpid
-	fields["inst_active_state"] = oi.InstInfo.ActiveState
-	fields["inst_bloqued"] = oi.InstInfo.Bloqued
-	fields["inst_db_status"] = oi.InstInfo.DBStatus
+	// From v$instance
+
 	fields["inst_number"] = oi.InstInfo.InstNumber
 	fields["inst_status"] = oi.InstInfo.Status
-	fields["inst_startup_time"] = oi.InstInfo.StartupTime
-	fields["inst_uptime"] = oi.InstInfo.Uptime
+	uptime, err := strconv.ParseInt(oi.InstInfo.Uptime, 10, 0)
+	if err != nil {
+		log.Warnf("Error on uptime conversion")
+	} else {
+		fields["inst_uptime_sec"] = uptime
+	}
 	fields["inst_version"] = oi.InstInfo.Version
-	fields["inst_role"] = oi.InstInfo.InstanceRole
-	fields["inst_shutdown_pending"] = oi.InstInfo.ShutdownPending
-	fields["inst_archiver"] = oi.InstInfo.Archiver
-	fields["db_open_mode"] = oi.DBInfo.OpenMode
-	fields["db_created"] = oi.DBInfo.Created
+
+	if oi.StatusExtendedInfo {
+		fields["inst_startup_time"] = oi.InstInfo.StartupTime
+		fields["inst_active_state"] = oi.InstInfo.ActiveState
+		fields["inst_bloqued"] = oi.InstInfo.Bloqued
+		fields["inst_db_status"] = oi.InstInfo.DBStatus
+		fields["inst_shutdown_pending"] = oi.InstInfo.ShutdownPending
+		fields["inst_archiver"] = oi.InstInfo.Archiver
+	}
+	// from v$database
 	fields["db_role"] = oi.DBInfo.DatabaseRole
-	fields["db_log_mode"] = oi.DBInfo.LogMode
-	fields["db_force_logging"] = oi.DBInfo.ForceLogging
+	fields["db_open_mode"] = oi.DBInfo.OpenMode
+	if oi.StatusExtendedInfo {
+		fields["db_created"] = oi.DBInfo.Created
+		fields["db_log_mode"] = oi.DBInfo.LogMode
+		fields["db_force_logging"] = oi.DBInfo.ForceLogging
+	}
+
 	fields["pdbs_total"] = oi.DBInfo.PDBTotal
 	fields["pdbs_active"] = oi.DBInfo.PDBActive
 
-	instance_ok := 0
-
-	// 0 = not process
-	// 1 = instance up not mounted
-	// 2 = instance up mounted
-	// 3 = instance up and open db readpnñy
-	// 4 = instance up adn open in rw with performance errors
-	// 5 = instance up adn open in rw without performance errors
-
-	// https://docs.oracle.com/cd/B19306_01/server.102/b14237/dynviews_1131.htm#REFRN30105
-	switch oi.InstInfo.Status {
-	case "STARTED": // STARTED = 1
-		instance_ok = 1
-	case "MOUNTED": // MOUNTED = 2
-		instance_ok = 2
-	case "OPEN": // OPEN = 3
-		switch oi.DBInfo.OpenMode {
-		case "MOUNTED":
-			instance_ok = 3
-		case "READ WRITE":
-			instance_ok = 5
-		case "READ ONLY":
-			instance_ok = 3
-		default:
-			log.Errorf("Error on DB OpenMode %s", oi.DBInfo.OpenMode)
-		}
-	case "OPEN MIGRATE": // OPEN MIGRATE = 2
-		instance_ok = 2 // 3?
-	default:
-		log.Errorf("Error on Instance Active State %s", oi.InstInfo.ActiveState)
-	}
-
-	fields["instance_ok"] = instance_ok
 	status := metric.New("oracle_status", tags, fields, time.Now())
 
 	return []telegraf.Metric{status}
