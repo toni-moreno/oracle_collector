@@ -88,7 +88,7 @@ func init() {
 
 	if getversion {
 		t, _ := strconv.ParseInt(agent.BuildStamp, 10, 64)
-		fmt.Printf("oracle_collector v%s (git: %s ) built at [%s]\n", agent.Version, agent.Commit, time.Unix(t, 0).Format("2006-01-02 15:04:05"))
+		fmt.Printf("oracle_collector %s (git: %s ) built at [%s]\n", agent.Version, agent.Commit, time.Unix(t, 0).Format("2006-01-02 15:04:05"))
 		os.Exit(0)
 	}
 	var cfg *config.Config
