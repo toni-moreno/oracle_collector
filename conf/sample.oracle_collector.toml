@@ -11,8 +11,7 @@ log_level = "debug"
 
 enabled = true
 request_period = "60s"
-#Measurement names will be
-# prefix + "runtime" + "XXX" ( for New Go Runtime  Stats -- https://pkg.go.dev/runtime/metrics --)
+# Measurement names will be:
 # prefix + "runtime_gvm_stats" ( for Go Legacy Runtime  Stats)
 # prefix + "collect_stats" ( for Query Stats )
 # prefix + "discover_stats" ( for Discovery Stats )

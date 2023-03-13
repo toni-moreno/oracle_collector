@@ -114,17 +114,16 @@ Usage of ./bin/oracle_collector:
 Oracle collector gathers 2 kind of different informations.
 
 1. Oracle Monitored/Discovered instances 
-2. Internat processes.
+2. Internat stats.
 
 
 ## Oracle Monitored Measurements/Metrics
 
-The agent is capable to get metrics organized and sent as ILP ( InfluDB Line Protocol) measurements. It takes 2 non configurable measurements.
-
-* oracle_status
-* oracle_pdb_status
+The agent is capable to get metrics organized and sent as ILP ( InfluDB Line Protocol) measurements. It takes 2 non configurable measurements. And a lot of other configurable measurements in the `metric` section of the config file`[[oracle-monitor.mgroup.metric]]`.
 
 ### Non configurable measurements.
+
+These measurements will be sent always even if any metric `[[oracle-monitor.mgroup.metric]]` and any metric group `[[oracle-monitor.mgroup]]` exiting in the config file.
 
 **oracle_status**
 
@@ -168,16 +167,17 @@ And
 
 
 
-* tags
-  * db: name o the DB
-  * db_uniq_name: de unique name for the DB
-  * instance: name of the instance
-  * instance_role: Indicates whether the instance is an active instance or an inactive secondary instance.
-  * host: Name of the host machine
+* **tags**
+  * all `extra_labels` from the `[oracle-discovery]` config section
+  * all `[global_tags]` configured in the parent telegraf config
+  * *db:* name o the DB
+  * *db_unique_name:* de unique name for the DB
+  * *instance:* name of the instance
+  * *instance_role:* Indicates whether the instance is an active instance or an inactive secondary instance.
 
 How much info it sends to the backend depens on the `oracle_status_extended_info` flag on the  `[oracle-discovery]` section:
 
-* fields
+* **fields**
   * From system process
     * *proc_ok (boolean)*:  True when process (proc_pid) is ok, false first time when detected is down.
     * *proc_pid (integer)*: PID from the Discovered PMON process
@@ -222,14 +222,16 @@ select
 from v$pdbs
 ```
 
-* tags
-  * db:
-  * db_uniq_name:
-  * instance:
-  * instance_role:
-  * pdb_name:
+* **tags**
+  * all `extra_labels` from the `[oracle-discovery]` config section
+  * all `[global_tags]` configured in the parent telegraf config
+  * *db:* name o the DB
+  * *db_unique_name:* de unique name for the DB
+  * *instance:* name of the instance
+  * *instance_role:* Indicates whether the instance is an active instance or an inactive secondary instance.
+  * *pdb_name:* the name of the pdb
 
-* fields
+* **fields**
   * *open_mode (string)*
   * *restricted (string)*
   * *recovery_status (string)*
@@ -263,7 +265,7 @@ FROM v$resource_limit
 ```
 
 - **measurement_name:** will be set with the value in the `context` struct field
-- **tags:**  will be set with all common tags appended by the `labels` struct list.
+- **tags:**  will be set with all common tags ,  `extra_labels` from the `[oracle-discovery]` config section and  `[global_tags]` configured in the parent telegraf config appended by the `labels` struct list. ( each label should be a column in the response query)
 - **fields:** will be set and type trasnformed if needed by the definition in the in `metrics_type` struct field 
 
 Tags and fields will taken from the resulted query in field `request`
@@ -272,8 +274,101 @@ In the above example:
 
 **measurement:** "resource"
 * **tags**
+  * all `extra_labels` from the `[oracle-discovery]` config section
+  * all `[global_tags]` configured in the parent telegraf config
   * resource_name
 * **fields**
   * current_utilization (integer):
   * limit_value (integer)
   * used_pct(float)
+
+
+## Internal Statistics.
+
+Oracle collector gathers also some internal processes informattion. The name of its measurements depens on the `measurement_prefix` parameter from the `[self-monitor]` config section.
+
+These are the collected measurements:
+
+**<prefix>runtime_gvm_stats**
+
+Gathers information about the Go Virtual Machine runtime stats. ( Garbage collection, goroutines and memory) Refer to [MemStats](https://pkg.go.dev/runtime#MemStats) to get detailed info on memory stats.
+
+* **tags**
+  * all `extra_labels` from the `[self-monitor]` config
+  * all `[global_tags]` configured in the parent telegraf config
+* **fields**
+  * *runtime_goroutines*: returns the number of goroutines that currently exist.
+  * *mem.mallocs:* is the cumulative count of heap objects allocated. 
+  * *mem.alloc:*  is bytes of allocated heap objects.
+  * *mem.frees:*  is the cumulative count of heap objects freed.
+  * *mem.sys:* is the total bytes of memory obtained from the OS.
+  * *mem.heap_alloc_bytes:*  is bytes of allocated heap objects.
+  * *mem.heap_sys_bytes:* HeapSys is bytes of heap memory obtained from the OS.
+  * *mem.heap_idle_bytes:* HeapIdle is bytes in idle (unused) spans.
+  * *mem.heap_in_use_bytes:* HeapInuse is bytes in in-use spans.
+  * *mem.heap_released_bytes:* HeapReleased is bytes of physical memory returned to the OS.
+  * *mem.heap_objects:* HeapObjects is the number of allocated heap objects.
+  * *mem.stack_in_use_bytes:* is bytes in stack spans.
+  * *mem.m_span_in_use_bytes:* MSpanInuse is bytes of allocated mspan structures.
+  * *mem.m_cache_in_use_bytes:*  MCacheInuse is bytes of allocated mcache structures.
+  * *gc.total_pause_ns:* is the cumulative nanoseconds in GC stop-the-world pauses since the program started.
+  * *gc.pause_per_interval:* pause on each gathering `request_period` interval.
+  * *gc.pause_per_second:* pause acummulated per second.
+  * *gc.gc_per_inteval:*  number of gc's per `request_period`interval.
+  * *gc.gc_per_second:*  number if gc's per second.
+
+
+**<prefix>discover_stats**
+
+Gathers information about the oracle instance discovery process.
+
+* **tags**
+  * all `extra_labels` from the `[self-monitor]` config
+  * all `[global_tags]` configured in the parent telegraf config
+* **fields**
+  * *all:* number of discovered processes with the `oracle_discovery_sid_regex` process pattern.
+  * *new:* number of new instances since last discovery process.
+  * *current:" number of currently discovered and connected oracle instances
+  * *disconnected:" number of instances which has been disconnected since the last discovery process
+  * *connect_errors*: number of oracle instances with errors in the connecting process.
+  * *disconnected_sid_names: list of SID names which has beed disconnected since the last discovery process.  ( separeted by ":")
+  * *connected_sid_names* list of SID names currently connected (separated by ":).
+  * *errconnect_sid_names* list of SID names with connetion errors (separated by ":")
+
+
+**<prefix>collect_stats**
+
+This measurement is needed to know how long collector takes on each query on each database and how many results (metrics) are we gathering in each query.
+
+* **tags**
+  * all `extra_labels` from the `[self-monitor]` config
+  * all `[global_tags]` configured in the parent telegraf config
+  * *db:* the database where collecting metrics
+  * *db_unique_name:* the unique name for the database
+  * *instance:* the instance where connected
+  * *instance_role:* the role of the instance.
+  * *metric_group:* the name of the metric group where is configured 
+  * *metric_context:* the context of the metric group where is configured ( `context` parameter)
+  * *metric_id:* the uniq id of the metric ( `id` parameter or `context`if id not configured)
+* **fields**
+  * *num_metrics*: num of collected metrics from this query metric.
+  * *duration_us*: duration of the query in microseconds  
+
+
+**<prefix>sql_driver_stats**
+
+Gather information on each collector to  each DB instance connection with these [sql generic stats](https://pkg.go.dev/database/sql#DBStats)
+
+* **tags**
+  * all `extra_labels` from the `[self-monitor]` config
+  * all `[global_tags]` configured in the parent telegraf config
+  * *instance*: the instance name 
+* **fields**
+  * *idle_conn*: The number of idle connections.
+  * *inuse_conn*: The number of connections currently in use.
+  * *max_idle_closed*: The total number of connections closed due to SetMaxIdleConns.
+  * *max_idle_time_closed*: The total number of connections closed due to SetConnMaxIdleTime.
+  * *max_open_connections*:
+  * *open_connections*: The number of established connections both in use and idle.
+  * *wait_count*: The total number of connections waited for.
+  * *wait_duration_ms*: The total time blocked waiting for a new connection.
