@@ -233,7 +233,7 @@ func SendDiscoveryMetrics(discovered_all int, new int, current_connected int, di
 	sort.Strings(err_con_sids)
 	fields["disconnected_sid_names"] = strings.Join(old_str, ":")
 	fields["connected_sid_names"] = strings.Join(new_str, ":")
-	fields["errconnect_sid_names"] = strings.Join(new_str, ":")
+	fields["errconnect_sid_names"] = strings.Join(err_con_sids, ":")
 	now := time.Now()
 	meas_name := "discover_stats"
 	if len(conf.Prefix) > 0 {
