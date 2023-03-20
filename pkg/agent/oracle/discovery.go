@@ -48,14 +48,30 @@ func discover(cfg *config.DiscoveryConfig) {
 
 	errorConnect := 0
 	errorConnectSids := []string{}
+	errorSkipped := 0
+	errorSkippedSids := []string{}
 	for _, inst := range new {
 		inst.cfg = cfg
 		log.Infof("[DISCOVERY] New Instance found: %s", inst.DiscoveredSid)
 		err := inst.Init(cfg.OracleLogLevel, cfg.OracleClusterwareEnabled, cfg.OracleStatusExtendedInfo)
 		if err != nil {
-			errorConnect++
-			errorConnectSids = append(errorConnectSids, inst.DiscoveredSid)
-			log.Errorf("[DISCOVERY] Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
+			skip := false
+			for _, skipr := range cfg.SkipErrR {
+				skip = skipr.MatchString(err.Error())
+				if skip {
+					break
+				}
+			}
+			if skip {
+				errorSkipped++
+				errorSkippedSids = append(errorSkippedSids, inst.DiscoveredSid)
+				log.Errorf("[DISCOVERY] Error On Initialize Instance [SKIPPED by oracle_discovery_skip_errors_regex ] %s: %s", inst.DiscoveredSid, err)
+			} else {
+				errorConnect++
+				errorConnectSids = append(errorConnectSids, inst.DiscoveredSid)
+				log.Errorf("[DISCOVERY] Error On Initialize Instance %s: %s", inst.DiscoveredSid, err)
+			}
+
 			continue
 		}
 		OraList.Add(inst)
@@ -85,7 +101,17 @@ func discover(cfg *config.DiscoveryConfig) {
 		selfmon.SendSQLDriverStat(inst.GetInstanceName(), inst.GetDriverStats())
 	}
 
-	selfmon.SendDiscoveryMetrics(len(oinstances), len(new), len(same), len(old), errorConnect, GetSidNames(new), GetSidNames(old), errorConnectSids)
+	selfmon.SendDiscoveryMetrics(
+		len(oinstances),  // discovered_all
+		len(new),         // discovered_new
+		len(same),        // discovered_current
+		len(old),         // undiscovered
+		errorConnect,     // connect_errors
+		errorSkipped,     // connect_errors_skipped
+		GetSidNames(new), // discovered_new_str
+		GetSidNames(old), // undiscovered_str
+		errorConnectSids, // err_con_sids
+		errorSkippedSids) // skipped_con_sids
 }
 
 func discoveryProcess(cfg *config.DiscoveryConfig, done chan bool) {

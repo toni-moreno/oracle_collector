@@ -213,7 +213,17 @@ func SendQueryStat(extraLabels map[string]string, mgc *config.OracleMetricGroupC
 	output.SendMetrics(result)
 }
 
-func SendDiscoveryMetrics(discovered_all int, new int, current_connected int, disconnected int, connect_error int, new_str []string, old_str []string, err_con_sids []string) {
+func SendDiscoveryMetrics(discovered_all int,
+	discovered_new int,
+	discovered_current int,
+	undiscovered int,
+	connect_error int,
+	connet_skip int,
+	discovered_new_str []string,
+	undiscovered_str []string,
+	err_con_sids []string,
+	skipped_con_sids []string,
+) {
 	result := []telegraf.Metric{}
 
 	tags := make(map[string]string)
@@ -224,16 +234,25 @@ func SendDiscoveryMetrics(discovered_all int, new int, current_connected int, di
 
 	fields := make(map[string]interface{})
 	fields["all"] = discovered_all
-	fields["new"] = new
-	fields["current"] = current_connected
-	fields["disconnected"] = disconnected
+	fields["discovered_all"] = discovered_all
+
+	fields["new"] = discovered_new
+	fields["discovered_new"] = discovered_new
+
+	fields["current"] = discovered_current
+	fields["discovered_current"] = discovered_current
+
+	fields["undiscovered"] = undiscovered
 	fields["connect_errors"] = connect_error
-	sort.Strings(new_str)
-	sort.Strings(old_str)
+	fields["connect_errors_skipped"] = connet_skip
+	sort.Strings(discovered_new_str)
+	sort.Strings(undiscovered_str)
 	sort.Strings(err_con_sids)
-	fields["disconnected_sid_names"] = strings.Join(old_str, ":")
-	fields["connected_sid_names"] = strings.Join(new_str, ":")
+	// sort.Strings(skipped_con_sids)
+	fields["undiscovered_sid_names"] = strings.Join(undiscovered_str, ":")
+	fields["discovered_sid_names"] = strings.Join(discovered_new_str, ":")
 	fields["errconnect_sid_names"] = strings.Join(err_con_sids, ":")
+	// fields["errconnect_skipped_sid_names"] = strings.Join(skipped_con_sids, ":")
 	now := time.Now()
 	meas_name := "discover_stats"
 	if len(conf.Prefix) > 0 {

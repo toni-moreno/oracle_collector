@@ -40,16 +40,18 @@ func (dp *DinamicParams) Validate() error {
 }
 
 type DiscoveryConfig struct {
-	OracleClusterwareEnabled bool              `toml:"oracle_clusterware_enabled"`
-	OracleDiscoveryInterval  time.Duration     `toml:"oracle_discovery_interval"`
-	OracleDiscoverySidRegex  string            `toml:"oracle_discovery_sid_regex"`
-	OracleConnectUser        string            `toml:"oracle_connect_user"`
-	OracleConnectPass        string            `toml:"oracle_connect_pass"`
-	OracleConnectDSN         string            `toml:"oracle_connect_dsn"`
-	ExtraLabels              map[string]string `toml:"extra_labels"`
-	OracleStatusExtendedInfo bool              `toml:"oracle_status_extended_info"`
-	OracleLogLevel           string            `toml:"oracle_log_level"`
-	DynamicParamsBySID       []*DinamicParams  `toml:"dynamic-params"`
+	OracleClusterwareEnabled       bool              `toml:"oracle_clusterware_enabled"`
+	OracleDiscoveryInterval        time.Duration     `toml:"oracle_discovery_interval"`
+	OracleDiscoverySidRegex        string            `toml:"oracle_discovery_sid_regex"`
+	OracleDiscoverySkipErrorsRegex []string          `toml:"oracle_discovery_skip_errors_regex"`
+	SkipErrR                       []*regexp.Regexp  `toml:"-"`
+	OracleConnectUser              string            `toml:"oracle_connect_user"`
+	OracleConnectPass              string            `toml:"oracle_connect_pass"`
+	OracleConnectDSN               string            `toml:"oracle_connect_dsn"`
+	ExtraLabels                    map[string]string `toml:"extra_labels"`
+	OracleStatusExtendedInfo       bool              `toml:"oracle_status_extended_info"`
+	OracleLogLevel                 string            `toml:"oracle_log_level"`
+	DynamicParamsBySID             []*DinamicParams  `toml:"dynamic-params"`
 }
 
 func (dc *DiscoveryConfig) Validate() error {
@@ -65,6 +67,14 @@ func (dc *DiscoveryConfig) Validate() error {
 	_, err := regexp.Compile(dc.OracleDiscoverySidRegex)
 	if err != nil {
 		return fmt.Errorf("Error on Discovery Config  parameter  oracle_discovery_sid_regex : %s", err)
+	}
+
+	for _, rexp := range dc.OracleDiscoverySkipErrorsRegex {
+		r, err := regexp.Compile(rexp)
+		if err != nil {
+			return fmt.Errorf("Error on Skip Error Param regex: %s: %s", rexp, err)
+		}
+		dc.SkipErrR = append(dc.SkipErrR, r)
 	}
 
 	for _, v := range dc.DynamicParamsBySID {

@@ -34,6 +34,8 @@ oracle_clusterware_enabled = true
 oracle_discovery_interval = "1m"
 oracle_discovery_sid_regex = "^[oraxeasm].*_pmon_(?P<SID>[\\w]+)$"
 
+oracle_discovery_skip_errors_regex = [ "ORA-01033" ] #ORACLE initialization or shutdown in progress (usally mounted instances)
+
 oracle_connect_user="C##MONIT"
 oracle_connect_pass="XXXYYY"
 oracle_connect_dsn="server01_IP0:1521/SID"

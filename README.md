@@ -326,14 +326,16 @@ Gathers information about the oracle instance discovery process.
   * all `extra_labels` from the `[self-monitor]` config
   * all `[global_tags]` configured in the parent telegraf config
 * **fields**
-  * *all:* number of discovered processes with the `oracle_discovery_sid_regex` process pattern.
-  * *new:* number of new instances since last discovery process.
-  * *current:" number of currently discovered and connected oracle instances
-  * *disconnected:" number of instances which has been disconnected since the last discovery process
+  * *discovered_all/all*: (discovered_all) number of discovered processes with the `oracle_discovery_sid_regex` process pattern.
+  * *discovered_new/new*: (discovered_new) number of new instances since last discovery process that is not connected
+  * *discovred_current/current*: (discovered_current) number of currently discovered and also connected oracle instances
+  * *undiscovered*: number of instances which has been undiscovered since the last discovery process
   * *connect_errors*: number of oracle instances with errors in the connecting process.
-  * *disconnected_sid_names: list of SID names which has beed disconnected since the last discovery process.  ( separeted by ":")
-  * *connected_sid_names* list of SID names currently connected (separated by ":).
+  * *connect_errors_skipped*: number of oracle instances with errors  but skipped from the error list by the regexp rules in the `oracle_discovery_skip_errors_regex` parameter.
+  * *undiscovered_sid_names: list of SID names which has beed undetected since the last discovery process.  ( separeted by ":")
+  * *discovered_sid_names* list of SID names detected and currently trying to connect (maybe with errors or not) (separated by ":).
   * *errconnect_sid_names* list of SID names with connetion errors (separated by ":")
+  * *errconnect_skipped_sid_names* list of SID with connection errors but skipped from the error list by the regexp rules in the `oracle_discovery_skip_errors_regex` parameter 
 
 
 **<prefix>collect_stats**
